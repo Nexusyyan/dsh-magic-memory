@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Magic Memory",
+    "description": "Closed-loop cross-session memory engine for DeepSeek Harness: zero-native SQLite FTS5 + CJK hybrid search, optional remote embeddings, KV-cache-stable baseline & post-compaction re-anchoring, background fact extractor, Dreamer self-maintenance, and native Web/Desktop right-sidebar dashboard."
+  }
+}

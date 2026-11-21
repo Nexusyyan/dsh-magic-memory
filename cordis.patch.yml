@@ -1,0 +1,12 @@
+# dsh-magic-memory bundle patch
+# Inserts the cross-session memory engine on the Host plane so all DSH modes
+# (Web, Desktop with all presets, Headless, ACP, SDK) share the same durable
+# SQLite WAL memory store at $DSH_HOME/magic-memory/memory.db.
+# The Web/Desktop React sidebar half (`./client`) loads automatically only on
+# browser surfaces via `dsh.client` in package.json.
+
+- insert:
+    - id: dsh-magic-memory
+      name: dsh-magic-memory
+      config:
+        dbPath: !!js dshHomePath('magic-memory', 'memory.db')

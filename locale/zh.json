@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Magic Memory 记忆闭环",
+    "description": "面向 DeepSeek Harness 的跨会话记忆闭环插件：零原生依赖 SQLite FTS5 + 中文混合检索、可选远程 Embedding、KV Cache 稳定的基线与压缩后重锚定注入、后台事实提取、Dreamer 六任务自维护与原生 Web/Desktop 右侧边栏面板。"
+  }
+}
