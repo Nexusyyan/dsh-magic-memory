@@ -80,7 +80,7 @@ function buildDraft(
   const extM = settings.extractor.model.trim()
   const drmP = settings.dreamer.provider.trim()
   const drmM = settings.dreamer.model.trim()
-  const separate = extP !== drmP || extM !== drmM
+  const separate = settings.dreamer.separateModel === true || extP !== drmP || extM !== drmM
   return {
     enabled: settings.enabled,
     injectOnStart: settings.injectOnStart,
@@ -244,6 +244,8 @@ export function SettingsTab({
 
   const [testingLlm, setTestingLlm] = useState(false)
   const [llmTestResult, setLlmTestResult] = useState<SettingsTestLlmResponse | null>(null)
+  const [testingDreamerLlm, setTestingDreamerLlm] = useState(false)
+  const [dreamerTestResult, setDreamerTestResult] = useState<SettingsTestLlmResponse | null>(null)
 
   const [testingEmb, setTestingEmb] = useState(false)
   const [embTestResult, setEmbTestResult] = useState<SettingsTestEmbeddingResponse | null>(null)
@@ -289,9 +291,14 @@ export function SettingsTab({
   const effectiveDreamerProvider = draft.separateDreamerModel ? draft.dreamerProvider : draft.extractorProvider
   const effectiveDreamerModel = draft.separateDreamerModel ? draft.dreamerModel : draft.extractorModel
 
-  const activeRouteLabel = serverState.resolvedExtractorRoute
+  const extRouteStr = serverState.resolvedExtractorRoute
     ? `${serverState.resolvedExtractorRoute.provider} / ${serverState.resolvedExtractorRoute.model}`
     : t('settings.routeUnresolved')
+  const drmRouteStr = serverState.resolvedDreamerRoute
+    ? `${serverState.resolvedDreamerRoute.provider} / ${serverState.resolvedDreamerRoute.model}`
+    : t('settings.routeUnresolved')
+  const activeRouteLabel =
+    extRouteStr === drmRouteStr ? extRouteStr : `Extractor: ${extRouteStr} · Dreamer: ${drmRouteStr}`
 
   const handleSave = async () => {
     setSaving(true)
@@ -313,6 +320,7 @@ export function SettingsTab({
         dreamer: {
           enabled: draft.dreamerEnabled,
           tickIntervalMinutes: draft.dreamerTickMinutes,
+          separateModel: draft.separateDreamerModel,
           provider: effectiveDreamerProvider.trim(),
           model: effectiveDreamerModel.trim(),
         },
@@ -361,6 +369,27 @@ export function SettingsTab({
       })
     } finally {
       setTestingLlm(false)
+    }
+  }
+
+  const handleTestDreamerLlm = async () => {
+    setTestingDreamerLlm(true)
+    setDreamerTestResult(null)
+    try {
+      const res = await api.testLlm({
+        provider: draft.dreamerProvider.trim(),
+        model: draft.dreamerModel.trim(),
+      })
+      setDreamerTestResult(res)
+    } catch (err) {
+      setDreamerTestResult({
+        ok: false,
+        latencyMs: 0,
+        route: null,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      setTestingDreamerLlm(false)
     }
   }
 
@@ -533,24 +562,42 @@ export function SettingsTab({
           </div>
 
           {draft.separateDreamerModel && (
-            <ModelSelector
-              id="dmm-llm-dreamer-model"
-              label={t('settings.dreamerModelLabel')}
-              provider={draft.dreamerProvider}
-              model={draft.dreamerModel}
-              customMode={draft.dreamerCustomMode}
-              catalog={catalog}
-              t={t}
-              onSelectAuto={() =>
-                setDraft(d => (d ? { ...d, dreamerProvider: '', dreamerModel: '', dreamerCustomMode: false } : d))
-              }
-              onSelectCatalog={(p, m) =>
-                setDraft(d => (d ? { ...d, dreamerProvider: p, dreamerModel: m, dreamerCustomMode: false } : d))
-              }
-              onSelectCustom={() => setDraft(d => (d ? { ...d, dreamerCustomMode: true } : d))}
-              onChangeProvider={p => setDraft(d => (d ? { ...d, dreamerProvider: p } : d))}
-              onChangeModel={m => setDraft(d => (d ? { ...d, dreamerModel: m } : d))}
-            />
+            <div className="dmm-stack" style={{ gap: 8 }}>
+              <ModelSelector
+                id="dmm-llm-dreamer-model"
+                label={t('settings.dreamerModelLabel')}
+                provider={draft.dreamerProvider}
+                model={draft.dreamerModel}
+                customMode={draft.dreamerCustomMode}
+                catalog={catalog}
+                t={t}
+                onSelectAuto={() =>
+                  setDraft(d => (d ? { ...d, dreamerProvider: '', dreamerModel: '', dreamerCustomMode: false } : d))
+                }
+                onSelectCatalog={(p, m) =>
+                  setDraft(d => (d ? { ...d, dreamerProvider: p, dreamerModel: m, dreamerCustomMode: false } : d))
+                }
+                onSelectCustom={() => setDraft(d => (d ? { ...d, dreamerCustomMode: true } : d))}
+                onChangeProvider={p => setDraft(d => (d ? { ...d, dreamerProvider: p } : d))}
+                onChangeModel={m => setDraft(d => (d ? { ...d, dreamerModel: m } : d))}
+              />
+              <div className="dmm-row" style={{ justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="dmm-btn dmm-btn-sm"
+                  disabled={testingDreamerLlm}
+                  onClick={() => void handleTestDreamerLlm()}
+                >
+                  {testingDreamerLlm ? t('settings.testing') : t('settings.testDreamerLlm')}
+                </button>
+              </div>
+              {dreamerTestResult && (
+                <div className={`dmm-test-result ${dreamerTestResult.ok ? 'dmm-test-ok' : 'dmm-test-fail'}`}>
+                  {dreamerTestResult.ok && <CheckMiniIcon size={13} />}
+                  <span>{dreamerTestResult.message}</span>
+                </div>
+              )}
+            </div>
           )}
 
           {llmTestResult && (

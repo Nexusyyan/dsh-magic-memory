@@ -28,31 +28,48 @@ A closed-loop cross-session memory plugin for **DeepSeek Harness (DSH)** inspire
 - **Out-of-Band Background Loop**:
   - **Session Extractor**: Incremental `turn/end` extraction + pre-compaction fact rescue (fail-closed XML parser)
   - **Dreamer 6-Task Scheduler**: `map-memories`, `verify`, `curate`, `classify-memories`, `retrospective`, `review-user-memories` with SQLite leases, dead-PID takeover, and claim-safety guards
-- **Native Web & Desktop Right-Sidebar UI**:
-  - 4 tabs: **Memories** (hybrid search + CRUD modal + Pin/Archive/Restore), **Episodes & Notes** (+ manual Extract), **Dreamer** (6-task schedule, backlog, run history, manual triggers), and **Telemetry** (KV-cache Defer ratio, Re-Anchor count, Auto-Search hits, Doctor self-heal, Markdown/JSON export)
-  - Live hot-reloadable configuration in DSH's native Plugins Settings page via Schemastery `.volatile()`
+- **Native Web & Desktop UI (Light & Dark Theme Parity)**:
+  - Mounted across 3 DSH surfaces: **Left Sidebar Main Page**, **Conversation Header Quick-Open Button**, and **Right Sidebar Tab**
+  - 5 tabs: **Memories** (borderless category filters + hybrid search + CRUD modal + Pin/Archive/Restore), **Episodes & Notes** (+ manual Extract), **Dreamer** (6-task 2×3 schedule grid, backlog, run history, manual triggers), **Telemetry** (KV-cache Defer ratio, Re-Anchor count, Auto-Search hits, Doctor self-heal, Markdown/JSON export), and **Settings** (in-panel DSH LLM model picker, separate Dreamer model option, OpenAI-compatible Embedding config with presets, connectivity tests, and one-click historical memory vector reindexing)
+  - Live settings persist to SQLite (`plugin_settings`) and take effect immediately without restarting DSH
 
 ---
 
 ## Installation in DSH
 
-### Option 1: Install from local folder (CLI)
+Pre-built `dist/` artifacts are included in every release tag, so installing directly from GitHub works out-of-the-box on **macOS, Windows, and Linux** with zero build step.
+
+### Option 1: Install directly from GitHub (Recommended for macOS & Windows)
+
+Add to your DSH profile `package.json` (or via DSH Plugins Manager):
+
+```json
+{
+  "dependencies": {
+    "dsh-magic-memory": "github:Nexusyyan/dsh-magic-memory#v0.1.0"
+  }
+}
+```
+
+Or via CLI:
 
 ```bash
-cd /path/to/dsh-magic-memory
+dsh plugin add github:Nexusyyan/dsh-magic-memory#v0.1.0
+```
+
+> Use `github:Nexusyyan/dsh-magic-memory` (without `#v0.1.0`) to track `main`.
+
+### Option 2: Install from a local checkout (Development)
+
+```bash
+git clone https://github.com/Nexusyyan/dsh-magic-memory.git
+cd dsh-magic-memory
 pnpm install
 pnpm run build
 
-# Add to your DSH installation
+# Link into your DSH installation
 dsh plugin add /path/to/dsh-magic-memory
 ```
-
-### Option 2: Install via DSH Desktop / Web Plugins UI
-
-1. Build the plugin (`pnpm install && pnpm run build`).
-2. Open **Settings → Plugins** in DSH Desktop or Web.
-3. Click **Install Plugin** and select the `dsh-magic-memory` directory (or install from npm once published).
-4. Open the Right Sidebar Guide card → **Magic Memory** to view the live dashboard.
 
 ### Option 3: Custom Cordis / SDK host
 

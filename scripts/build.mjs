@@ -39,9 +39,9 @@ async function buildHost() {
     logLevel: 'info',
   })
 
-  // Emit declaration files for Host entry and services
-  const tscBin = resolve(ROOT, 'node_modules/.bin/tsc')
-  execFileSync(tscBin, ['-p', resolve(ROOT, 'tsconfig.json'), '--emitDeclarationOnly'], {
+  // Emit declaration files for Host entry and services (cross-platform: works on macOS, Linux, Windows)
+  const tscScript = resolve(ROOT, 'node_modules/typescript/bin/tsc')
+  execFileSync(process.execPath, [tscScript, '-p', resolve(ROOT, 'tsconfig.json'), '--emitDeclarationOnly'], {
     cwd: ROOT,
     stdio: 'inherit',
   })

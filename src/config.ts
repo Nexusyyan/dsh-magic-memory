@@ -49,6 +49,7 @@ export interface DreamerTaskIntervals {
 export interface DreamerConfig {
   enabled: boolean
   tickIntervalMinutes: number
+  separateModel?: boolean
   provider: string
   model: string
   maxOutputTokens: number
@@ -130,6 +131,7 @@ export const DEFAULT_DREAMER_INTERVALS: DreamerTaskIntervals = {
 export const DEFAULT_DREAMER: DreamerConfig = {
   enabled: true,
   tickIntervalMinutes: 15,
+  separateModel: false,
   provider: '',
   model: '',
   maxOutputTokens: 3072,

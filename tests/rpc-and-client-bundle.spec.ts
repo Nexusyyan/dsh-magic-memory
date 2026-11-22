@@ -293,11 +293,16 @@ describe('Host RPC Bridge & Compiled Browser Client Bundle (`dist/client.js`) En
       expect(screen.getByText(/# Magic Memory Export/)).toBeTruthy()
     })
 
-    // Tab 5: Settings (Background LLM + Embedding config persistence & secret masking)
+    // Tab 5: Settings (Background LLM + Separate Dreamer toggle + Embedding config persistence & secret masking)
     fireEvent.click(screen.getByRole('tab', { name: /Settings/i }))
     await waitFor(() => {
       expect(screen.getByTestId('magic-memory-settings')).toBeTruthy()
     })
+    const separateCheckbox = screen.getByLabelText('Use a separate model for Dreamer maintenance') as HTMLInputElement
+    expect(separateCheckbox.checked).toBe(false)
+    fireEvent.click(separateCheckbox)
+    expect(separateCheckbox.checked).toBe(true)
+
     fireEvent.click(screen.getByRole('button', { name: 'OpenAI-Compatible API' }))
     fireEvent.change(screen.getByLabelText('API Base URL / Endpoint'), {
       target: { value: 'https://api.example.com/v1' },
@@ -312,8 +317,11 @@ describe('Host RPC Bridge & Compiled Browser Client Bundle (`dist/client.js`) En
     await waitFor(() => {
       expect(screen.getByText(/Magic Memory settings saved/i)).toBeTruthy()
     })
+    // Verify separate Dreamer toggle stayed persisted even when both models are identical (auto)
+    expect((screen.getByLabelText('Use a separate model for Dreamer maintenance') as HTMLInputElement).checked).toBe(true)
     // Verify persisted runtime config updated live & public snapshot masks secret
     const liveCfg = service.getConfig()
+    expect(liveCfg.dreamer.separateModel).toBe(true)
     expect(liveCfg.embedding.provider).toBe('openai-compatible')
     expect(liveCfg.embedding.endpoint).toBe('https://api.example.com/v1')
     expect(liveCfg.embedding.model).toBe('BAAI/bge-m3')

@@ -246,6 +246,10 @@ export class MagicMemoryService extends Service {
       extractor: { ...cfg.extractor },
       dreamer: {
         ...cfg.dreamer,
+        separateModel:
+          cfg.dreamer.separateModel === true ||
+          cfg.dreamer.provider.trim() !== cfg.extractor.provider.trim() ||
+          cfg.dreamer.model.trim() !== cfg.extractor.model.trim(),
         taskIntervalsMinutes: { ...cfg.dreamer.taskIntervalsMinutes },
       },
       embedding: {
@@ -361,6 +365,7 @@ export class MagicMemoryService extends Service {
       next.dreamer = {
         ...current.dreamer,
         ...(typeof patch.dreamer.enabled === 'boolean' ? { enabled: patch.dreamer.enabled } : {}),
+        ...(typeof patch.dreamer.separateModel === 'boolean' ? { separateModel: patch.dreamer.separateModel } : {}),
         ...(typeof patch.dreamer.userMemoriesEnabled === 'boolean'
           ? { userMemoriesEnabled: patch.dreamer.userMemoriesEnabled }
           : {}),

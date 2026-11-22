@@ -375,6 +375,7 @@ export interface MagicMemorySettingsPayload {
   readonly dreamer: {
     readonly enabled: boolean
     readonly tickIntervalMinutes: number
+    readonly separateModel: boolean
     readonly provider: string
     readonly model: string
     readonly maxOutputTokens: number
