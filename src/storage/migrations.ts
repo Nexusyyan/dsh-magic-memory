@@ -6,7 +6,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { GLOBAL_PROJECT_ID } from '../shared/types.js'
 
-export const LATEST_SUPPORTED_VERSION = 1
+export const LATEST_SUPPORTED_VERSION = 2
 
 export class SchemaFenceError extends Error {
   readonly code = 'SCHEMA_FENCE_UNSUPPORTED'
@@ -250,6 +250,14 @@ CREATE TABLE IF NOT EXISTS leases (
 );
 `
 
+const V2_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS plugin_settings (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+`
+
 export function readSchemaVersion(db: DatabaseSync): number {
   const tableRow = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'")
@@ -282,6 +290,7 @@ export function ensureSchema(db: DatabaseSync): number {
     }
     if (rechecked === 0) {
       db.exec(V1_SCHEMA_SQL)
+      db.exec(V2_MIGRATION_SQL)
       const now = Date.now()
       db.prepare('INSERT INTO schema_meta (singleton, version, updated_at) VALUES (1, ?, ?)').run(
         LATEST_SUPPORTED_VERSION,
@@ -292,6 +301,12 @@ export function ensureSchema(db: DatabaseSync): number {
         `INSERT OR IGNORE INTO projects (project_id, display_name, canonical_root, memory_epoch, last_active_at, created_at)
          VALUES (?, ?, ?, 1, ?, ?)`,
       ).run(GLOBAL_PROJECT_ID, 'Global User Profile', '', now, now)
+    } else if (rechecked === 1) {
+      db.exec(V2_MIGRATION_SQL)
+      db.prepare('UPDATE schema_meta SET version = ?, updated_at = ? WHERE singleton = 1').run(
+        LATEST_SUPPORTED_VERSION,
+        Date.now(),
+      )
     }
     db.exec('COMMIT')
     return LATEST_SUPPORTED_VERSION

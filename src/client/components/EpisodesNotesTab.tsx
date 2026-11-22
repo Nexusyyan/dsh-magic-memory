@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type { NoteRecord, SessionEpisodeRecord } from '../../shared/types.js'
 import type { MagicMemoryApi } from '../api.js'
 import type { TranslateFn } from '../locales.js'
+import { HistoryEmptyIcon, NoteEmptyIcon } from './ui-helpers.js'
 
 export interface EpisodesNotesTabProps {
   api: MagicMemoryApi
@@ -124,9 +125,9 @@ export function EpisodesNotesTab({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="dmm-row-between">
-        <span className="dmm-section-title">{t('notes.title')}</span>
+    <div className="dmm-stack">
+      <div className="dmm-section-head">
+        <h3 className="dmm-section-title">{t('notes.title')}</h3>
         <div className="dmm-row">
           <button type="button" className="dmm-btn" onClick={() => setShowAddNote(v => !v)}>
             + {t('notes.add')}
@@ -144,7 +145,7 @@ export function EpisodesNotesTab({
       </div>
 
       {showAddNote && (
-        <form className="dmm-card" onSubmit={e => void handleCreateNote(e)}>
+        <form className="dmm-card dmm-card-muted" onSubmit={e => void handleCreateNote(e)}>
           <input
             type="text"
             className="dmm-input"
@@ -162,7 +163,7 @@ export function EpisodesNotesTab({
             onChange={e => setNoteContent(e.target.value)}
           />
           <div className="dmm-row-between">
-            <label className="dmm-row" style={{ cursor: 'pointer' }}>
+            <label className="dmm-checkbox">
               <input
                 type="checkbox"
                 checked={noteSessionOnly}
@@ -170,23 +171,34 @@ export function EpisodesNotesTab({
               />
               <span>{t('notes.sessionOnly')}</span>
             </label>
-            <button type="submit" className="dmm-btn dmm-btn-primary">
-              {t('notes.save')}
-            </button>
+            <div className="dmm-row">
+              <button type="button" className="dmm-btn" onClick={() => setShowAddNote(false)}>
+                {t('modal.cancel')}
+              </button>
+              <button type="submit" className="dmm-btn dmm-btn-primary">
+                {t('notes.save')}
+              </button>
+            </div>
           </div>
         </form>
       )}
 
       {notes.length === 0 ? (
-        <div className="dmm-empty">{loading ? t('header.loading') : t('notes.empty')}</div>
+        <div className="dmm-empty">
+          <div className="dmm-empty-icon">
+            <NoteEmptyIcon size={18} />
+          </div>
+          <p className="dmm-empty-desc">{loading ? t('header.loading') : t('notes.empty')}</p>
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="dmm-stack">
           {notes.map(note => (
-            <div key={note.id} className="dmm-card">
+            <article key={note.id} className="dmm-card">
               <div className="dmm-row-between">
-                <strong>
-                  #{note.id} {note.title}
-                </strong>
+                <div className="dmm-row">
+                  <span className="dmm-badge dmm-badge-mono">#{note.id}</span>
+                  <span className="dmm-card-title">{note.title}</span>
+                </div>
                 <button
                   type="button"
                   className="dmm-btn dmm-btn-ghost dmm-btn-danger"
@@ -198,33 +210,41 @@ export function EpisodesNotesTab({
               <div className="dmm-card-content">{note.content}</div>
               <div className="dmm-meta">
                 <span>{formatShortTime(note.updatedAt)}</span>
-                {note.sessionId && <span>· session {note.sessionId.slice(0, 8)}</span>}
+                {note.sessionId && <span className="dmm-meta-files">session {note.sessionId.slice(0, 8)}</span>}
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
 
-      <span className="dmm-section-title">{t('episodes.title')}</span>
+      <div className="dmm-section-head" style={{ marginTop: 6 }}>
+        <h3 className="dmm-section-title">{t('episodes.title')}</h3>
+      </div>
 
       {episodes.length === 0 ? (
-        <div className="dmm-empty">{loading ? t('header.loading') : t('episodes.empty')}</div>
+        <div className="dmm-empty">
+          <div className="dmm-empty-icon">
+            <HistoryEmptyIcon size={18} />
+          </div>
+          <h4 className="dmm-empty-title">{loading ? t('header.loading') : t('episodes.empty')}</h4>
+          {!loading && <p className="dmm-empty-desc">{t('episodes.emptyHint')}</p>}
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="dmm-stack">
           {episodes.map(ep => (
             <article key={ep.id} className="dmm-card">
               <div className="dmm-row-between">
-                <strong>{ep.title}</strong>
+                <span className="dmm-card-title">{ep.title}</span>
                 <div className="dmm-row">
                   <span className="dmm-badge dmm-badge-accent">{ep.episodeType}</span>
-                  <span className="dmm-badge">imp {ep.importance}</span>
+                  <span className="dmm-badge dmm-badge-mono">imp {ep.importance}</span>
                 </div>
               </div>
               <div className="dmm-card-content">{ep.summary}</div>
               {ep.keyDecisions.length > 0 && (
-                <div style={{ fontSize: 11.5, color: 'var(--dmm-fg-muted)' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 2 }}>{t('episodes.decisions')}:</div>
-                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                <div className="dmm-decisions">
+                  <div className="dmm-decisions-title">{t('episodes.decisions')}</div>
+                  <ul>
                     {ep.keyDecisions.map((d, idx) => (
                       <li key={idx}>{d}</li>
                     ))}
@@ -232,10 +252,8 @@ export function EpisodesNotesTab({
                 </div>
               )}
               <div className="dmm-meta">
-                <span>session {ep.sessionId.slice(0, 8)}</span>
-                <span>·</span>
+                <span className="dmm-meta-files">session {ep.sessionId.slice(0, 8)}</span>
                 <span>seq {ep.startSeq}–{ep.endSeq}</span>
-                <span>·</span>
                 <span>{formatShortTime(ep.createdAt)}</span>
               </div>
             </article>

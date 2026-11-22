@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import type { DreamRunRecord, DreamTaskName, DreamTaskScheduleState } from '../../shared/types.js'
 import type { MagicMemoryApi } from '../api.js'
 import type { MagicMemoryLocaleKey, TranslateFn } from '../locales.js'
+import { HistoryEmptyIcon } from './ui-helpers.js'
 
 export interface DreamerTabProps {
   api: MagicMemoryApi
@@ -63,13 +64,16 @@ export function DreamerTab({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div className="dmm-row-between">
-        <div className="dmm-row">
-          <span className="dmm-section-title">{t('dreamer.title')}</span>
-          <span className={enabled ? 'dmm-badge dmm-badge-ok' : 'dmm-badge dmm-badge-warn'}>
-            {enabled ? t('dreamer.enabled') : t('dreamer.disabled')}
-          </span>
+    <div className="dmm-stack">
+      <div className="dmm-section-head">
+        <div>
+          <div className="dmm-row">
+            <h3 className="dmm-section-title">{t('dreamer.title')}</h3>
+            <span className={enabled ? 'dmm-badge dmm-badge-ok' : 'dmm-badge dmm-badge-warn'}>
+              {enabled ? t('dreamer.enabled') : t('dreamer.disabled')}
+            </span>
+          </div>
+          <p className="dmm-section-desc">{t('dreamer.subtitle')}</p>
         </div>
         <button
           type="button"
@@ -81,19 +85,19 @@ export function DreamerTab({
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="dmm-dreamer-grid">
         {tasks.map(task => {
           const labelKey = `dreamer.task.${task.taskName}` as MagicMemoryLocaleKey
           return (
             <div key={task.taskName} className="dmm-card">
               <div className="dmm-row-between">
-                <div>
-                  <strong>{t(labelKey)}</strong>{' '}
-                  <span className="dmm-badge">{task.taskName}</span>
+                <div className="dmm-row">
+                  <span className="dmm-card-title">{t(labelKey)}</span>
+                  <span className="dmm-badge dmm-badge-mono">{task.taskName}</span>
                 </div>
                 <button
                   type="button"
-                  className="dmm-btn"
+                  className="dmm-btn dmm-btn-sm"
                   disabled={runningTask !== null}
                   onClick={() => void runDream(task.taskName)}
                 >
@@ -102,13 +106,11 @@ export function DreamerTab({
               </div>
               <div className="dmm-meta">
                 <span>{t('dreamer.backlog', { count: task.backlogCount })}</span>
-                <span>·</span>
                 <span>
                   {task.intervalMinutes > 0
                     ? t('dreamer.interval', { minutes: task.intervalMinutes })
                     : t('dreamer.intervalOff')}
                 </span>
-                <span>·</span>
                 <span>{t('dreamer.lastRun', { time: formatTime(task.lastRunAt, t('dreamer.never')) })}</span>
                 <span className={statusClass(task.lastStatus)}>{task.lastStatus}</span>
                 {task.consecutiveFailures > 0 && (
@@ -118,24 +120,31 @@ export function DreamerTab({
                 )}
               </div>
               {task.lastError && (
-                <div style={{ fontSize: 11.5, color: 'var(--dmm-danger)' }}>{task.lastError}</div>
+                <div style={{ fontSize: 12, color: 'var(--dmm-danger)' }}>{task.lastError}</div>
               )}
             </div>
           )
         })}
       </div>
 
-      <span className="dmm-section-title">{t('dreamer.recentRuns')}</span>
+      <div className="dmm-section-head" style={{ marginTop: 4 }}>
+        <h3 className="dmm-section-title">{t('dreamer.recentRuns')}</h3>
+      </div>
 
       {recentRuns.length === 0 ? (
-        <div className="dmm-empty">{t('dreamer.noRuns')}</div>
+        <div className="dmm-empty">
+          <div className="dmm-empty-icon">
+            <HistoryEmptyIcon size={18} />
+          </div>
+          <p className="dmm-empty-desc">{t('dreamer.noRuns')}</p>
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="dmm-stack">
           {recentRuns.map(run => (
             <div key={run.id} className="dmm-card">
               <div className="dmm-row-between">
                 <div className="dmm-row">
-                  <span className="dmm-badge">{run.taskName}</span>
+                  <span className="dmm-badge dmm-badge-mono">{run.taskName}</span>
                   <span className={statusClass(run.status)}>{run.status}</span>
                   <span className="dmm-badge">{run.trigger}</span>
                 </div>
@@ -144,14 +153,8 @@ export function DreamerTab({
               <div className="dmm-card-content">{run.errorMessage ?? run.summary}</div>
               <div className="dmm-meta">
                 <span>processed: {run.itemsProcessed}</span>
-                <span>·</span>
                 <span>mutations: {run.mutationsApplied}</span>
-                {run.modelUsed && (
-                  <>
-                    <span>·</span>
-                    <span>model: {run.modelUsed}</span>
-                  </>
-                )}
+                {run.modelUsed && <span className="dmm-meta-files">{run.modelUsed}</span>}
               </div>
             </div>
           ))}

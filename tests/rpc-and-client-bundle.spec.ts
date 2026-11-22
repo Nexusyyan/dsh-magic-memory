@@ -237,10 +237,14 @@ describe('Host RPC Bridge & Compiled Browser Client Bundle (`dist/client.js`) En
     expect(screen.getByTestId('magic-memory-panel').getAttribute('data-variant')).toBe('sidebar')
     expect(typeof boundRefresh).toBe('function')
 
-    // Tab 1: Memories loads existing memory from SQLite & creates a new one
+    // Tab 1: Memories loads existing memory from SQLite, verifies custom SelectMenu popover, & creates a new one
     await waitFor(() => {
       expect(screen.getByText(/ctx\.connection\.rpc \/api/)).toBeTruthy()
     })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Project' }))
+    expect(screen.getByRole('listbox', { name: 'Project' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('option', { name: /UI Demo Repo/i }))
+
     fireEvent.click(screen.getByRole('button', { name: /\+ New Memory/i }))
     fireEvent.change(screen.getByLabelText('Content'), {
       target: { value: 'Always run pnpm run build before packaging.' },
@@ -288,6 +292,35 @@ describe('Host RPC Bridge & Compiled Browser Client Bundle (`dist/client.js`) En
     await waitFor(() => {
       expect(screen.getByText(/# Magic Memory Export/)).toBeTruthy()
     })
+
+    // Tab 5: Settings (Background LLM + Embedding config persistence & secret masking)
+    fireEvent.click(screen.getByRole('tab', { name: /Settings/i }))
+    await waitFor(() => {
+      expect(screen.getByTestId('magic-memory-settings')).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'OpenAI-Compatible API' }))
+    fireEvent.change(screen.getByLabelText('API Base URL / Endpoint'), {
+      target: { value: 'https://api.example.com/v1' },
+    })
+    fireEvent.change(screen.getByLabelText('Embedding Model'), {
+      target: { value: 'BAAI/bge-m3' },
+    })
+    fireEvent.change(screen.getByLabelText('API Key'), {
+      target: { value: 'sk-test-secret-9876' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Settings' }))
+    await waitFor(() => {
+      expect(screen.getByText(/Magic Memory settings saved/i)).toBeTruthy()
+    })
+    // Verify persisted runtime config updated live & public snapshot masks secret
+    const liveCfg = service.getConfig()
+    expect(liveCfg.embedding.provider).toBe('openai-compatible')
+    expect(liveCfg.embedding.endpoint).toBe('https://api.example.com/v1')
+    expect(liveCfg.embedding.model).toBe('BAAI/bge-m3')
+    expect(liveCfg.embedding.apiKey).toBe('sk-test-secret-9876')
+    const publicSnap = service.getPublicSettings()
+    expect(publicSnap.embedding.hasApiKey).toBe(true)
+    expect(publicSnap.embedding.apiKeyPreview).toBe('sk-t••••9876')
 
     for (const d of disposers) d()
   })

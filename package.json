@@ -1,6 +1,6 @@
 {
   "name": "dsh-magic-memory",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Magic-context inspired closed-loop cross-session memory plugin for DeepSeek Harness (DSH): zero-native SQLite FTS5 + CJK hybrid search, optional remote embeddings, cache-stable baseline & post-compaction re-anchor injection, background fact extractor, Dreamer self-maintenance, and native Web/Desktop right-sidebar dashboard.",
   "icon": "./icon.svg",
   "keywords": [

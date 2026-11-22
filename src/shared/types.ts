@@ -328,3 +328,119 @@ export interface DoctorCheckResult {
   readonly ftsConsistent: boolean
   readonly warnings: readonly string[]
 }
+
+export interface AvailableModelInfo {
+  readonly provider: string
+  readonly providerName: string
+  readonly id: string
+  readonly name: string
+  readonly description?: string
+}
+
+export interface PublicEmbeddingSettings {
+  readonly provider: 'off' | 'openai-compatible'
+  readonly endpoint: string
+  readonly model: string
+  readonly hasApiKey: boolean
+  readonly apiKeyPreview: string
+  readonly apiKeyEnv: string
+  readonly timeoutMs: number
+}
+
+export interface MagicMemorySettingsPayload {
+  readonly enabled: boolean
+  readonly injectOnStart: boolean
+  readonly reanchorAfterCompaction: boolean
+  readonly includeSubagents: 'search-only' | 'full' | 'off'
+  readonly baselineBudgetTokens: number
+  readonly userProfileBudgetTokens: number
+  readonly deltaBudgetTokens: number
+  readonly maxMemoryChars: number
+  readonly autoSearch: {
+    readonly enabled: boolean
+    readonly scoreThreshold: number
+    readonly maxHints: number
+    readonly minPromptChars: number
+  }
+  readonly extractor: {
+    readonly enabled: boolean
+    readonly triggerTokens: number
+    readonly onCompaction: boolean
+    readonly cooldownSeconds: number
+    readonly provider: string
+    readonly model: string
+    readonly maxOutputTokens: number
+    readonly autoPromote: boolean
+  }
+  readonly dreamer: {
+    readonly enabled: boolean
+    readonly tickIntervalMinutes: number
+    readonly provider: string
+    readonly model: string
+    readonly maxOutputTokens: number
+    readonly timeoutMs: number
+    readonly recencyDays: number
+    readonly userMemoriesEnabled: boolean
+    readonly userPromoteThreshold: number
+    readonly taskIntervalsMinutes: Readonly<Record<DreamTaskName, number>>
+  }
+  readonly embedding: PublicEmbeddingSettings
+}
+
+export interface MagicMemorySettingsPatch {
+  readonly enabled?: boolean
+  readonly injectOnStart?: boolean
+  readonly reanchorAfterCompaction?: boolean
+  readonly includeSubagents?: 'search-only' | 'full' | 'off'
+  readonly baselineBudgetTokens?: number
+  readonly userProfileBudgetTokens?: number
+  readonly deltaBudgetTokens?: number
+  readonly maxMemoryChars?: number
+  readonly autoSearch?: Partial<MagicMemorySettingsPayload['autoSearch']>
+  readonly extractor?: Partial<MagicMemorySettingsPayload['extractor']>
+  readonly dreamer?: Partial<Omit<MagicMemorySettingsPayload['dreamer'], 'taskIntervalsMinutes'>> & {
+    readonly taskIntervalsMinutes?: Partial<Record<DreamTaskName, number>>
+  }
+  readonly embedding?: {
+    readonly provider?: 'off' | 'openai-compatible'
+    readonly endpoint?: string
+    readonly model?: string
+    readonly apiKey?: string
+    readonly clearApiKey?: boolean
+    readonly apiKeyEnv?: string
+    readonly timeoutMs?: number
+  }
+}
+
+export interface SettingsGetResponse {
+  readonly settings: MagicMemorySettingsPayload
+  readonly availableModels: readonly AvailableModelInfo[]
+  readonly resolvedExtractorRoute: { readonly provider: string; readonly model: string } | null
+  readonly resolvedDreamerRoute: { readonly provider: string; readonly model: string } | null
+  readonly hasEnvEmbeddingKey: boolean
+  readonly dbPath: string
+}
+
+export interface SettingsTestLlmResponse {
+  readonly ok: boolean
+  readonly latencyMs: number
+  readonly route: { readonly provider: string; readonly model: string } | null
+  readonly message: string
+}
+
+export interface SettingsTestEmbeddingResponse {
+  readonly ok: boolean
+  readonly latencyMs: number
+  readonly dims?: number
+  readonly endpoint?: string
+  readonly model?: string
+  readonly message: string
+}
+
+export interface SettingsReindexEmbeddingsResponse {
+  readonly total: number
+  readonly embedded: number
+  readonly skipped: number
+  readonly failed: number
+  readonly message: string
+}

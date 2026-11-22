@@ -19,6 +19,7 @@ import {
   GLOBAL_PROJECT_ID,
   MEMORY_CATEGORIES,
   type DreamTaskName,
+  type MagicMemorySettingsPatch,
   type MemoryCategory,
   type MemoryStatus,
   type SearchSource,
@@ -285,6 +286,47 @@ export async function dispatchMagicMemoryRpc(
         const { projectId } = await resolveProjectFromPayload(ctx, service, body)
         const format = body['format'] === 'json' ? 'json' : 'markdown'
         return ok({ format, content: service.exportSnapshot(projectId, format) })
+      }
+
+      case 'settings.get': {
+        return ok(await service.getSettingsState())
+      }
+
+      case 'settings.update': {
+        const patch = asRecord(body['patch'] ?? body) as MagicMemorySettingsPatch
+        return ok(await service.updateSettings(patch))
+      }
+
+      case 'settings.testLlm': {
+        const provider = typeof body['provider'] === 'string' ? body['provider'] : ''
+        const model = typeof body['model'] === 'string' ? body['model'] : ''
+        return ok(await service.testLlmRoute({ provider, model }, signal))
+      }
+
+      case 'settings.testEmbedding': {
+        const draft = asRecord(body['embedding'] ?? body)
+        return ok(
+          await service.testEmbeddingSettings(
+            {
+              provider:
+                draft['provider'] === 'off' || draft['provider'] === 'openai-compatible'
+                  ? draft['provider']
+                  : undefined,
+              endpoint: typeof draft['endpoint'] === 'string' ? draft['endpoint'] : undefined,
+              model: typeof draft['model'] === 'string' ? draft['model'] : undefined,
+              apiKey: typeof draft['apiKey'] === 'string' ? draft['apiKey'] : undefined,
+              clearApiKey: draft['clearApiKey'] === true,
+              apiKeyEnv: typeof draft['apiKeyEnv'] === 'string' ? draft['apiKeyEnv'] : undefined,
+              timeoutMs: typeof draft['timeoutMs'] === 'number' ? draft['timeoutMs'] : undefined,
+            },
+            signal,
+          ),
+        )
+      }
+
+      case 'settings.reindexEmbeddings': {
+        const { projectId } = await resolveProjectFromPayload(ctx, service, body)
+        return ok(await service.reindexProjectEmbeddings(projectId, signal))
       }
 
       default:

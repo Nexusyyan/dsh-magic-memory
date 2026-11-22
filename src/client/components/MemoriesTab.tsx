@@ -10,6 +10,17 @@ import {
 } from '../../shared/types.js'
 import type { MagicMemoryApi } from '../api.js'
 import type { TranslateFn } from '../locales.js'
+import {
+  CATEGORY_COLORS,
+  CategoryDot,
+  CheckMiniIcon,
+  getCategoryLabel,
+  getSourceKindLabel,
+  getVerificationLabel,
+  LayersEmptyIcon,
+  SearchIcon,
+} from './ui-helpers.js'
+import { SelectMenu } from './SelectMenu.js'
 
 export interface MemoriesTabProps {
   api: MagicMemoryApi
@@ -32,10 +43,22 @@ interface EditorState {
   content: string
 }
 
-function verificationBadgeClass(state: string): string {
-  if (state === 'verified') return 'dmm-badge dmm-badge-ok'
-  if (state === 'stale') return 'dmm-badge dmm-badge-warn'
-  return 'dmm-badge'
+function renderVerificationStatus(state: string, t: TranslateFn): React.ReactElement | null {
+  if (state === 'verified') {
+    return (
+      <span className="dmm-status-inline">
+        <CheckMiniIcon size={12} />
+        <span>{getVerificationLabel(t, state)}</span>
+      </span>
+    )
+  }
+  if (state === 'stale') {
+    return <span className="dmm-badge dmm-badge-warn">{getVerificationLabel(t, state)}</span>
+  }
+  if (state === 'conflict') {
+    return <span className="dmm-badge dmm-badge-danger">{getVerificationLabel(t, state)}</span>
+  }
+  return <span className="dmm-id-tag">{getVerificationLabel(t, state)}</span>
 }
 
 export function MemoriesTab({
@@ -61,6 +84,8 @@ export function MemoriesTab({
 
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [saving, setSaving] = useState(false)
+
+  const hasActiveFilter = scope !== 'all' || status !== 'active' || category !== 'ALL'
 
   useEffect(() => {
     const controller = new AbortController()
@@ -97,6 +122,12 @@ export function MemoriesTab({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [editor])
 
+  const resetFilters = () => {
+    setScope('all')
+    setStatus('active')
+    setCategory('ALL')
+  }
+
   const runSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     const trimmed = query.trim()
@@ -126,7 +157,12 @@ export function MemoriesTab({
     setEditor({
       mode: 'create',
       scope: scope === 'global' ? 'global' : 'project',
-      category: scope === 'global' ? 'USER_PROFILE' : (category === 'ALL' || category === 'USER_PROFILE' ? 'PROJECT_RULES' : category),
+      category:
+        scope === 'global'
+          ? 'USER_PROFILE'
+          : category === 'ALL' || category === 'USER_PROFILE'
+            ? 'PROJECT_RULES'
+            : category,
       importance: 65,
       pinned: false,
       content: '',
@@ -208,116 +244,139 @@ export function MemoriesTab({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <form className="dmm-search-bar" onSubmit={runSearch}>
-        <input
-          type="search"
-          className="dmm-input"
-          aria-label={t('memories.search')}
-          placeholder={t('memories.searchPlaceholder')}
-          value={query}
-          onChange={e => {
-            setQuery(e.target.value)
-            if (e.target.value.trim().length === 0) setSearchHits(null)
-          }}
-        />
-        <button type="submit" className="dmm-btn" disabled={searching}>
-          {t('memories.search')}
-        </button>
-        {searchHits !== null && (
-          <button
-            type="button"
-            className="dmm-btn dmm-btn-ghost"
-            onClick={() => {
-              setQuery('')
-              setSearchHits(null)
-            }}
-          >
-            {t('memories.clear')}
-          </button>
-        )}
-      </form>
-
-      <div className="dmm-row-between">
-        <div className="dmm-chips" role="group" aria-label="Scope filter">
-          {(['all', 'project', 'global'] as const).map(s => (
+    <div className="dmm-stack">
+      <div className="dmm-filter-bar">
+        <form className="dmm-search-bar" onSubmit={runSearch}>
+          <div className="dmm-search-wrap">
+            <span className="dmm-search-icon">
+              <SearchIcon size={15} />
+            </span>
+            <input
+              type="search"
+              className="dmm-input"
+              aria-label={t('memories.search')}
+              placeholder={t('memories.searchPlaceholder')}
+              value={query}
+              onChange={e => {
+                setQuery(e.target.value)
+                if (e.target.value.trim().length === 0) setSearchHits(null)
+              }}
+            />
+            <button type="submit" className="dmm-search-submit" disabled={searching}>
+              {t('memories.search')}
+            </button>
+          </div>
+          {searchHits !== null && (
             <button
-              key={s}
+              type="button"
+              className="dmm-btn dmm-btn-ghost"
+              onClick={() => {
+                setQuery('')
+                setSearchHits(null)
+              }}
+            >
+              {t('memories.clear')}
+            </button>
+          )}
+          <button type="button" className="dmm-btn dmm-btn-primary" onClick={openCreateModal}>
+            + {t('memories.add')}
+          </button>
+        </form>
+
+        <div className="dmm-filter-strip">
+          <div className="dmm-chips" role="group" aria-label="Category filter">
+            <button
               type="button"
               className="dmm-chip"
-              data-active={scope === s}
-              onClick={() => setScope(s)}
+              data-active={category === 'ALL'}
+              onClick={() => setCategory('ALL')}
             >
-              {s === 'all' ? t('memories.scopeAll') : s === 'project' ? t('memories.scopeProject') : t('memories.scopeGlobal')}
+              {t('memories.allCategories')}
             </button>
-          ))}
-          <button
-            type="button"
-            className="dmm-chip"
-            data-active={status === 'active'}
-            onClick={() => setStatus('active')}
-          >
-            {t('memories.statusActive')}
-          </button>
-          <button
-            type="button"
-            className="dmm-chip"
-            data-active={status === 'archived'}
-            onClick={() => setStatus('archived')}
-          >
-            {t('memories.statusArchived')}
-          </button>
+            {MEMORY_CATEGORIES.map(cat => (
+              <button
+                key={cat}
+                type="button"
+                className="dmm-chip"
+                data-active={category === cat}
+                title={cat}
+                onClick={() => setCategory(cat)}
+              >
+                <CategoryDot category={cat} />
+                <span>{getCategoryLabel(t, cat)}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="dmm-row" style={{ gap: 6 }}>
+            <div className="dmm-segmented" role="group" aria-label="Scope filter">
+              {(['all', 'project', 'global'] as const).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  className="dmm-seg-btn"
+                  data-active={scope === s}
+                  onClick={() => setScope(s)}
+                >
+                  {s === 'all' ? t('memories.scopeAll') : s === 'project' ? t('memories.scopeProject') : t('memories.scopeGlobal')}
+                </button>
+              ))}
+            </div>
+
+            <div className="dmm-segmented" role="group" aria-label="Status filter">
+              <button
+                type="button"
+                className="dmm-seg-btn"
+                data-active={status === 'active'}
+                onClick={() => setStatus('active')}
+              >
+                {t('memories.statusActive')}
+              </button>
+              <button
+                type="button"
+                className="dmm-seg-btn"
+                data-active={status === 'archived'}
+                onClick={() => setStatus('archived')}
+              >
+                {t('memories.statusArchived')}
+              </button>
+            </div>
+          </div>
         </div>
-
-        <button type="button" className="dmm-btn dmm-btn-primary" onClick={openCreateModal}>
-          + {t('memories.add')}
-        </button>
-      </div>
-
-      <div className="dmm-chips" role="group" aria-label="Category filter">
-        <button
-          type="button"
-          className="dmm-chip"
-          data-active={category === 'ALL'}
-          onClick={() => setCategory('ALL')}
-        >
-          {t('memories.allCategories')}
-        </button>
-        {MEMORY_CATEGORIES.map(cat => (
-          <button
-            key={cat}
-            type="button"
-            className="dmm-chip"
-            data-active={category === cat}
-            onClick={() => setCategory(cat)}
-          >
-            {cat}
-          </button>
-        ))}
       </div>
 
       {searchHits !== null ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="dmm-row-between">
-            <span className="dmm-section-title">
+        <div className="dmm-stack">
+          <div className="dmm-section-head">
+            <h3 className="dmm-section-title">
               {t('memories.searchResults', { count: searchHits.length })}
-            </span>
+            </h3>
             <span className="dmm-badge">
               {searchUsedVector ? t('memories.vectorActive') : t('memories.ftsOnly')}
             </span>
           </div>
           {searchHits.length === 0 ? (
-            <div className="dmm-empty">{t('memories.empty')}</div>
+            <div className="dmm-empty">
+              <div className="dmm-empty-icon">
+                <SearchIcon size={18} />
+              </div>
+              <p className="dmm-empty-desc">{t('memories.emptyFiltered')}</p>
+            </div>
           ) : (
             searchHits.map(hit => (
               <div key={`${hit.source}-${hit.id}`} className="dmm-card">
                 <div className="dmm-row-between">
                   <div className="dmm-row">
                     <span className="dmm-badge dmm-badge-accent">{hit.source.toUpperCase()}</span>
-                    {hit.category && <span className="dmm-badge">{hit.category}</span>}
-                    {hit.workspaceLabel && <span className="dmm-badge">WS:{hit.workspaceLabel}</span>}
+                    {hit.category && (
+                      <span className="dmm-cat-tag" title={hit.category}>
+                        <CategoryDot category={hit.category as MemoryCategory} />
+                        <span>{getCategoryLabel(t, hit.category as MemoryCategory)}</span>
+                      </span>
+                    )}
+                    {hit.workspaceLabel && <span className="dmm-badge">WS: {hit.workspaceLabel}</span>}
                   </div>
-                  <span className="dmm-badge">score {hit.score.toFixed(2)}</span>
+                  <span className="dmm-id-tag">score {hit.score.toFixed(2)}</span>
                 </div>
                 <div className="dmm-card-content">{hit.content}</div>
               </div>
@@ -325,21 +384,43 @@ export function MemoriesTab({
           )}
         </div>
       ) : loading && memories.length === 0 ? (
-        <div className="dmm-empty">{t('header.loading')}</div>
+        <div className="dmm-empty">
+          <p className="dmm-empty-desc">{t('header.loading')}</p>
+        </div>
       ) : memories.length === 0 ? (
-        <div className="dmm-empty">{t('memories.empty')}</div>
+        <div className="dmm-empty">
+          <div className="dmm-empty-icon">
+            <LayersEmptyIcon size={20} />
+          </div>
+          <h3 className="dmm-empty-title">
+            {hasActiveFilter ? t('memories.emptyFiltered') : t('memories.emptyTitle')}
+          </h3>
+          {!hasActiveFilter && <p className="dmm-empty-desc">{t('memories.empty')}</p>}
+          {hasActiveFilter ? (
+            <button type="button" className="dmm-btn" onClick={resetFilters}>
+              {t('memories.resetFilters')}
+            </button>
+          ) : (
+            <button type="button" className="dmm-btn" onClick={openCreateModal}>
+              {t('memories.add')}
+            </button>
+          )}
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="dmm-stack">
           {memories.map(mem => (
             <article key={mem.id} className="dmm-card" data-memory-id={mem.id}>
               <div className="dmm-row-between">
-                <div className="dmm-row">
-                  <span className="dmm-badge">#{mem.id}</span>
-                  <span className="dmm-badge dmm-badge-accent">{mem.category}</span>
-                  {mem.pinned && <span className="dmm-badge dmm-badge-ok">{t('memories.pinnedBadge')}</span>}
-                  <span className={verificationBadgeClass(mem.verificationState)}>{mem.verificationState}</span>
+                <div className="dmm-row" style={{ gap: 10 }}>
+                  <span className="dmm-cat-tag" title={mem.category}>
+                    <CategoryDot category={mem.category} />
+                    <span>{getCategoryLabel(t, mem.category)}</span>
+                  </span>
+                  <span className="dmm-id-tag">#{mem.id}</span>
+                  {mem.pinned && <span className="dmm-badge dmm-badge-accent">{t('memories.pinnedBadge')}</span>}
+                  {renderVerificationStatus(mem.verificationState, t)}
                 </div>
-                <div className="dmm-row">
+                <div className="dmm-card-actions">
                   <button type="button" className="dmm-btn dmm-btn-ghost" onClick={() => openEditModal(mem)}>
                     {t('memories.edit')}
                   </button>
@@ -360,16 +441,13 @@ export function MemoriesTab({
 
               <div className="dmm-meta">
                 <span>{t('memories.importance', { value: mem.importance })}</span>
-                <span>·</span>
                 <span>{t('memories.retrievals', { count: mem.retrievalCount })}</span>
-                <span>·</span>
-                <span>{mem.sourceKind}</span>
-                {mem.backingFiles.length > 0 && (
-                  <>
-                    <span>·</span>
-                    <span>{mem.backingFiles.join(', ')}</span>
-                  </>
-                )}
+                <span>{getSourceKindLabel(t, mem.sourceKind)}</span>
+                {mem.backingFiles.slice(0, 4).map(file => (
+                  <span key={file} className="dmm-meta-files">
+                    {file}
+                  </span>
+                ))}
               </div>
             </article>
           ))}
@@ -388,64 +466,71 @@ export function MemoriesTab({
         >
           <form className="dmm-modal" onSubmit={e => void handleSave(e)}>
             <div className="dmm-row-between">
-              <strong>
+              <span className="dmm-modal-title">
                 {editor.mode === 'create' ? t('modal.createTitle') : t('modal.editTitle', { id: editor.id })}
-              </strong>
-              <button type="button" className="dmm-btn dmm-btn-ghost" onClick={() => setEditor(null)}>
+              </span>
+              <button type="button" className="dmm-btn dmm-btn-ghost" onClick={() => setEditor(null)} aria-label="Close">
                 ✕
               </button>
             </div>
 
-            {editor.mode === 'create' && (
-              <div className="dmm-field">
-                <label className="dmm-label" htmlFor="dmm-scope">
-                  {t('modal.scope')}
-                </label>
-                <select
-                  id="dmm-scope"
-                  className="dmm-select"
-                  value={editor.scope}
-                  onChange={e => {
-                    const nextScope = e.target.value as MemoryScope
-                    setEditor({
-                      ...editor,
-                      scope: nextScope,
-                      category: nextScope === 'global' ? 'USER_PROFILE' : 'PROJECT_RULES',
-                    })
-                  }}
-                >
-                  <option value="project">{t('memories.scopeProject')}</option>
-                  <option value="global">{t('memories.scopeGlobal')}</option>
-                </select>
-              </div>
-            )}
+            <div className="dmm-field-row">
+              {editor.mode === 'create' && (
+                <div className="dmm-field">
+                  <label className="dmm-label" htmlFor="dmm-scope">
+                    {t('modal.scope')}
+                  </label>
+                  <SelectMenu
+                    id="dmm-scope"
+                    ariaLabel={t('modal.scope')}
+                    value={editor.scope}
+                    options={[
+                      { value: 'project', label: t('memories.scopeProject') },
+                      { value: 'global', label: t('memories.scopeGlobal') },
+                    ]}
+                    onChange={val => {
+                      const nextScope = val as MemoryScope
+                      setEditor({
+                        ...editor,
+                        scope: nextScope,
+                        category: nextScope === 'global' ? 'USER_PROFILE' : 'PROJECT_RULES',
+                      })
+                    }}
+                  />
+                </div>
+              )}
 
-            {editor.scope !== 'global' && (
-              <div className="dmm-field">
-                <label className="dmm-label" htmlFor="dmm-category">
-                  {t('modal.category')}
-                </label>
-                <select
-                  id="dmm-category"
-                  className="dmm-select"
-                  value={editor.category}
-                  onChange={e => setEditor({ ...editor, category: e.target.value as MemoryCategory })}
-                >
-                  {PROJECT_MEMORY_CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+              {editor.scope !== 'global' && (
+                <div className="dmm-field">
+                  <label className="dmm-label" htmlFor="dmm-category">
+                    {t('modal.category')}
+                  </label>
+                  <SelectMenu
+                    id="dmm-category"
+                    ariaLabel={t('modal.category')}
+                    value={editor.category}
+                    options={PROJECT_MEMORY_CATEGORIES.map(cat => ({
+                      value: cat,
+                      label: getCategoryLabel(t, cat),
+                      sublabel: cat,
+                      dotColor: CATEGORY_COLORS[cat],
+                    }))}
+                    onChange={val => setEditor({ ...editor, category: val as MemoryCategory })}
+                  />
+                </div>
+              )}
+            </div>
 
             <div className="dmm-field">
-              <label className="dmm-label" htmlFor="dmm-importance">
-                {t('modal.importance')}: {editor.importance}
-              </label>
+              <div className="dmm-row-between">
+                <label className="dmm-label" htmlFor="dmm-importance">
+                  {t('modal.importance')}
+                </label>
+                <span className="dmm-badge dmm-badge-mono">{editor.importance}</span>
+              </div>
               <input
                 id="dmm-importance"
+                className="dmm-range"
                 type="range"
                 min={1}
                 max={100}
@@ -454,7 +539,7 @@ export function MemoriesTab({
               />
             </div>
 
-            <label className="dmm-row" style={{ cursor: 'pointer' }}>
+            <label className="dmm-checkbox">
               <input
                 type="checkbox"
                 checked={editor.pinned}
@@ -482,7 +567,11 @@ export function MemoriesTab({
               <button type="button" className="dmm-btn" onClick={() => setEditor(null)}>
                 {t('modal.cancel')}
               </button>
-              <button type="submit" className="dmm-btn dmm-btn-primary" disabled={saving || editor.content.trim().length === 0}>
+              <button
+                type="submit"
+                className="dmm-btn dmm-btn-primary"
+                disabled={saving || editor.content.trim().length === 0}
+              >
                 {t('modal.save')}
               </button>
             </div>

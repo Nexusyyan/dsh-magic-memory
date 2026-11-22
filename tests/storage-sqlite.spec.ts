@@ -60,6 +60,7 @@ describe('MemoryDatabase (node:sqlite WAL, migrations, savepoints, schema fence)
           'dream_runs',
           'dream_task_schedule',
           'leases',
+          'plugin_settings',
         ]),
       )
     } finally {

@@ -83,6 +83,109 @@ export class EmbeddingService {
     return resolveEmbeddingEndpoint(config.endpoint).length > 0 && config.model.trim().length > 0
   }
 
+  async testConnectivity(
+    config: Readonly<EmbeddingConfig>,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean; latencyMs: number; dims?: number; endpoint: string; model: string; message: string }> {
+    const startedAt = Date.now()
+    const endpoint = resolveEmbeddingEndpoint(config.endpoint)
+    const model = config.model.trim()
+    if (config.provider !== 'openai-compatible') {
+      return {
+        ok: false,
+        latencyMs: 0,
+        endpoint,
+        model,
+        message: 'Embedding provider is currently disabled (off).',
+      }
+    }
+    if (!endpoint) {
+      return {
+        ok: false,
+        latencyMs: 0,
+        endpoint,
+        model,
+        message: 'Embedding endpoint URL is required.',
+      }
+    }
+    if (!model) {
+      return {
+        ok: false,
+        latencyMs: 0,
+        endpoint,
+        model,
+        message: 'Embedding model name is required.',
+      }
+    }
+
+    const apiKey = resolveEmbeddingApiKey(config)
+    const timeoutController = new AbortController()
+    const timer = setTimeout(
+      () => timeoutController.abort(new Error(`Timed out after ${config.timeoutMs}ms`)),
+      config.timeoutMs,
+    )
+    const combinedSignal = signal
+      ? AbortSignal.any([signal, timeoutController.signal])
+      : timeoutController.signal
+
+    try {
+      const headers: Record<string, string> = { 'content-type': 'application/json' }
+      if (apiKey.length > 0) headers['authorization'] = `Bearer ${apiKey}`
+      const response = await this.fetchImpl(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ model, input: ['Magic Memory embedding connectivity check'] }),
+        signal: combinedSignal,
+      })
+      const latencyMs = Date.now() - startedAt
+      if (!response.ok) {
+        let detail = ''
+        try {
+          const text = (await response.text()).slice(0, 220).trim()
+          if (text) detail = `: ${text}`
+        } catch {
+          // Ignore body read error
+        }
+        return {
+          ok: false,
+          latencyMs,
+          endpoint,
+          model,
+          message: `HTTP ${response.status} ${response.statusText}${detail}`,
+        }
+      }
+      const json = (await response.json()) as { data?: Array<{ embedding?: unknown }> }
+      const first = Array.isArray(json.data) ? json.data[0] : undefined
+      if (!first || !Array.isArray(first.embedding) || first.embedding.length === 0) {
+        return {
+          ok: false,
+          latencyMs,
+          endpoint,
+          model,
+          message: 'Response missing valid data[0].embedding array.',
+        }
+      }
+      return {
+        ok: true,
+        latencyMs,
+        dims: first.embedding.length,
+        endpoint,
+        model,
+        message: `Connected (${first.embedding.length} dims in ${latencyMs}ms)`,
+      }
+    } catch (err: unknown) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        endpoint,
+        model,
+        message: err instanceof Error ? err.message : String(err),
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   async embedTexts(
     texts: readonly string[],
     config: Readonly<EmbeddingConfig>,

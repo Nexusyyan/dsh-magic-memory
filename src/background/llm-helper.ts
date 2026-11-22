@@ -8,7 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { BlockAssembler, createSystemMessage, type GenerateOptions, type RequestMessage } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type { DreamFailureClass } from '../shared/types.js'
+import type { AvailableModelInfo, DreamFailureClass } from '../shared/types.js'
 
 export interface AuxiliaryRoute {
   readonly provider: string
@@ -93,17 +93,130 @@ export function resolveAuxiliaryRoute(
     }
   }
 
-  // Final fallback: first registered adapter model from ctx.llm
+  // Final fallback: first registered adapter model from ctx.llm (sync mock shape)
   const llm = ctx.get('llm') as
-    | { listModels?: () => readonly { provider?: string; id?: string; model?: string }[] }
+    | {
+        listProviders?: () => readonly { id?: string; name?: string }[]
+        listModels?: (provider?: string) => unknown
+      }
     | undefined
-  if (llm?.listModels) {
-    for (const m of llm.listModels()) {
-      const r = validRoute(m.provider, m.id ?? m.model)
-      if (r) return r
+  if (llm?.listModels && llm.listModels.length === 0) {
+    try {
+      const maybeModels = llm.listModels()
+      if (Array.isArray(maybeModels)) {
+        for (const m of maybeModels as readonly { provider?: string; id?: string; model?: string }[]) {
+          const r = validRoute(m.provider, m.id ?? m.model)
+          if (r) return r
+        }
+      }
+    } catch {
+      // Ignore if listModels requires a provider argument
     }
   }
 
+  return null
+}
+
+/**
+ * Enumerate all currently registered DSH LLM providers and their advertised models.
+ * Supports DSH's real `listProviders()` + `await listModels(provider)` runtime API
+ * as well as zero-arg sync mocks used in tests.
+ */
+export async function listAvailableLlmModels(ctx: Context): Promise<AvailableModelInfo[]> {
+  const llm = ctx.get('llm') as
+    | {
+        listProviders?: () => readonly { id: string; name?: string }[]
+        listModels?: (provider?: string) => Promise<readonly { provider?: string; id?: string; model?: string; name?: string; description?: string }[]> | readonly { provider?: string; id?: string; model?: string; name?: string; description?: string }[]
+      }
+    | undefined
+  if (!llm) return []
+
+  const results: AvailableModelInfo[] = []
+  const seen = new Set<string>()
+
+  const pushModel = (
+    provider: string,
+    providerName: string,
+    id: string,
+    name?: string,
+    description?: string,
+  ): void => {
+    const p = provider.trim()
+    const m = id.trim()
+    if (!p || !m) return
+    const key = `${p}::${m}`
+    if (seen.has(key)) return
+    seen.add(key)
+    results.push({
+      provider: p,
+      providerName: providerName.trim() || p,
+      id: m,
+      name: (name ?? '').trim() || m,
+      ...(description ? { description } : {}),
+    })
+  }
+
+  if (typeof llm.listProviders === 'function' && typeof llm.listModels === 'function') {
+    let providers: readonly { id: string; name?: string }[] = []
+    try {
+      providers = llm.listProviders() ?? []
+    } catch {
+      providers = []
+    }
+    await Promise.all(
+      providers.map(async prov => {
+        if (!prov?.id) return
+        try {
+          const models = await llm.listModels!(prov.id)
+          if (Array.isArray(models)) {
+            for (const m of models) {
+              const modelId = m.id ?? m.model ?? ''
+              pushModel(m.provider ?? prov.id, prov.name ?? prov.id, modelId, m.name, m.description)
+            }
+          }
+        } catch {
+          // Ignore individual failing provider discovery
+        }
+      }),
+    )
+    if (results.length > 0) return results
+  }
+
+  // Fallback for zero-arg listModels() mocks
+  if (typeof llm.listModels === 'function') {
+    try {
+      const models = await llm.listModels()
+      if (Array.isArray(models)) {
+        for (const m of models) {
+          const prov = m.provider ?? ''
+          const modelId = m.id ?? m.model ?? ''
+          pushModel(prov, prov, modelId, m.name, m.description)
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  return results
+}
+
+/**
+ * Async version of `resolveAuxiliaryRoute` that also consults `ctx.llm.listProviders()`
+ * + `await ctx.llm.listModels(provider)` when no active session/explicit override exists.
+ */
+export async function resolveAuxiliaryRouteAsync(
+  ctx: Context,
+  override: { provider?: string; model?: string },
+  session?: Session,
+  agent?: Agent,
+): Promise<AuxiliaryRoute | null> {
+  const syncRoute = resolveAuxiliaryRoute(ctx, override, session, agent)
+  if (syncRoute) return syncRoute
+  const catalog = await listAvailableLlmModels(ctx)
+  if (catalog.length > 0) {
+    return { provider: catalog[0]!.provider, model: catalog[0]!.id }
+  }
   return null
 }
 

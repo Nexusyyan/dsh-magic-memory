@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { MEMORY_CATEGORIES, type DoctorCheckResult, type MagicMemoryOverview } from '../../shared/types.js'
 import type { MagicMemoryApi } from '../api.js'
 import type { TranslateFn } from '../locales.js'
+import { ActivityEmptyIcon, CategoryDot, getCategoryLabel } from './ui-helpers.js'
 
 export interface TelemetryTabProps {
   api: MagicMemoryApi
@@ -92,9 +93,9 @@ export function TelemetryTab({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="dmm-row-between">
-        <span className="dmm-section-title">{t('telemetry.cacheTitle')}</span>
+    <div className="dmm-stack">
+      <div className="dmm-section-head">
+        <h3 className="dmm-section-title">{t('telemetry.cacheTitle')}</h3>
         {sessionId && (
           <button type="button" className="dmm-btn" onClick={() => void handleQueueSync()}>
             {t('telemetry.queueSync')}
@@ -136,10 +137,18 @@ export function TelemetryTab({
           </div>
         </>
       ) : (
-        <div className="dmm-empty">{t('telemetry.noSessionState')}</div>
+        <div className="dmm-empty">
+          <div className="dmm-empty-icon">
+            <ActivityEmptyIcon size={18} />
+          </div>
+          <p className="dmm-empty-desc">{t('telemetry.noSessionState')}</p>
+        </div>
       )}
 
-      <span className="dmm-section-title">{t('telemetry.storageTitle')}</span>
+      <div className="dmm-section-head" style={{ marginTop: 4 }}>
+        <h3 className="dmm-section-title">{t('telemetry.storageTitle')}</h3>
+      </div>
+
       <div className="dmm-stat-grid">
         <div className="dmm-stat-card">
           <div className="dmm-stat-label">{t('telemetry.dbSize')}</div>
@@ -151,7 +160,7 @@ export function TelemetryTab({
         </div>
         <div className="dmm-stat-card">
           <div className="dmm-stat-label">{t('telemetry.embeddingMode')}</div>
-          <div className="dmm-stat-value" style={{ fontSize: 12.5 }}>
+          <div className="dmm-stat-value" style={{ fontSize: 13.5, wordBreak: 'break-word' }}>
             {overview.embeddingProvider}
           </div>
         </div>
@@ -163,21 +172,31 @@ export function TelemetryTab({
         </div>
       </div>
 
-      <span className="dmm-section-title">{t('telemetry.categoriesTitle')}</span>
+      <div className="dmm-section-head" style={{ marginTop: 4 }}>
+        <h3 className="dmm-section-title">{t('telemetry.categoriesTitle')}</h3>
+      </div>
+
       <div className="dmm-card">
-        <div className="dmm-row">
+        <div className="dmm-dist-grid">
           {MEMORY_CATEGORIES.map(cat => (
-            <span key={cat} className="dmm-badge">
-              {cat}: {overview.countsByCategory[cat] ?? 0}
-            </span>
+            <div key={cat} className="dmm-dist-item" title={cat}>
+              <span className="dmm-row" style={{ gap: 6 }}>
+                <CategoryDot category={cat} />
+                <span>{getCategoryLabel(t, cat)}</span>
+              </span>
+              <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{overview.countsByCategory[cat] ?? 0}</strong>
+            </div>
           ))}
         </div>
         <div className="dmm-meta" style={{ wordBreak: 'break-all' }}>
-          DB: {overview.dbPath}
+          <span className="dmm-meta-files">{overview.dbPath}</span>
         </div>
       </div>
 
-      <span className="dmm-section-title">{t('telemetry.toolsTitle')}</span>
+      <div className="dmm-section-head" style={{ marginTop: 4 }}>
+        <h3 className="dmm-section-title">{t('telemetry.toolsTitle')}</h3>
+      </div>
+
       <div className="dmm-row">
         <button type="button" className="dmm-btn" disabled={runningDoctor} onClick={() => void handleDoctor()}>
           {t('telemetry.doctor')}
@@ -193,20 +212,18 @@ export function TelemetryTab({
       {doctor && (
         <div className="dmm-card">
           <div className="dmm-row-between">
-            <strong>{doctor.ok ? t('telemetry.doctorOk') : t('telemetry.doctorWarn')}</strong>
+            <span className="dmm-card-title">{doctor.ok ? t('telemetry.doctorOk') : t('telemetry.doctorWarn')}</span>
             <span className={doctor.ok ? 'dmm-badge dmm-badge-ok' : 'dmm-badge dmm-badge-warn'}>
               {doctor.journalMode.toUpperCase()}
             </span>
           </div>
           <div className="dmm-meta">
             <span>FTS5: {doctor.ftsConsistent ? 'OK' : 'Rebuilt'}</span>
-            <span>·</span>
             <span>Active leases: {doctor.activeLeases}</span>
-            <span>·</span>
             <span>Stale cleaned: {doctor.staleLeasesCleaned}</span>
           </div>
           {doctor.warnings.length > 0 && (
-            <ul style={{ margin: '4px 0 0', paddingLeft: 16, color: 'var(--dmm-warn)' }}>
+            <ul style={{ margin: '4px 0 0', paddingLeft: 16, color: 'var(--dmm-warn)', fontSize: 12 }}>
               {doctor.warnings.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
@@ -218,12 +235,12 @@ export function TelemetryTab({
       {exportPreview && (
         <div className="dmm-card">
           <div className="dmm-row-between">
-            <strong>Export ({exportPreview.format})</strong>
+            <span className="dmm-card-title">Export ({exportPreview.format})</span>
             <div className="dmm-row">
-              <button type="button" className="dmm-btn" onClick={() => void handleCopy()}>
+              <button type="button" className="dmm-btn dmm-btn-sm" onClick={() => void handleCopy()}>
                 {copied ? t('telemetry.copied') : t('telemetry.copy')}
               </button>
-              <button type="button" className="dmm-btn" onClick={handleDownload}>
+              <button type="button" className="dmm-btn dmm-btn-sm" onClick={handleDownload}>
                 {t('telemetry.download')}
               </button>
               <button type="button" className="dmm-btn dmm-btn-ghost" onClick={() => setExportPreview(null)}>

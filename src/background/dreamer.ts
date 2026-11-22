@@ -31,20 +31,35 @@ export class DreamerScheduler {
     private readonly service: MagicMemoryService,
   ) {}
 
-  /** Register the periodic timer as a reversible Cordis effect. */
+  /** Register the periodic timer as a reversible Cordis effect (reschedules on config change). */
   start(): void {
     this.ctx.effect(() => {
-      const cfg = this.service.getConfig()
-      const intervalMs = Math.max(60_000, cfg.dreamer.tickIntervalMinutes * 60_000)
-      const timer = setInterval(() => {
-        void this.tick().catch(err => {
-          this.ctx.logger?.warn?.('[dsh-magic-memory] dreamer tick failed: %o', err)
-        })
-      }, intervalMs)
-      // Do not keep Headless CLI processes alive waiting for background Dreamer ticks
-      timer.unref?.()
+      let timer: ReturnType<typeof setInterval> | null = null
+      let activeIntervalMs = -1
+
+      const arm = () => {
+        const cfg = this.service.getConfig()
+        const intervalMs = Math.max(60_000, cfg.dreamer.tickIntervalMinutes * 60_000)
+        if (timer && intervalMs === activeIntervalMs) return
+        if (timer) clearInterval(timer)
+        activeIntervalMs = intervalMs
+        timer = setInterval(() => {
+          void this.tick().catch(err => {
+            this.ctx.logger?.warn?.('[dsh-magic-memory] dreamer tick failed: %o', err)
+          })
+        }, intervalMs)
+        // Do not keep Headless CLI processes alive waiting for background Dreamer ticks
+        timer.unref?.()
+      }
+
+      arm()
+      const unsub = this.service.onConfigChange(arm)
       const cleanup = () => {
-        clearInterval(timer)
+        unsub()
+        if (timer) {
+          clearInterval(timer)
+          timer = null
+        }
         if (this.stopTimer === cleanup) this.stopTimer = null
       }
       this.stopTimer = cleanup

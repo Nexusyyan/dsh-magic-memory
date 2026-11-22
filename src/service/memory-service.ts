@@ -9,12 +9,31 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import {
+  DEFAULT_AUTO_SEARCH,
+  DEFAULT_DREAMER,
+  DEFAULT_DREAMER_INTERVALS,
+  DEFAULT_EMBEDDING,
+  DEFAULT_EXTRACTOR,
   getDreamTaskIntervalMinutes,
   readConfigSnapshot,
+  type AutoSearchConfig,
+  type DreamerConfig,
+  type EmbeddingConfig,
+  type ExtractorConfig,
   type MagicMemoryConfig,
   type ResolvedConfig,
 } from '../config.js'
-import { EmbeddingService, type FetchLike } from '../search/embedding.js'
+import {
+  listAvailableLlmModels,
+  resolveAuxiliaryRouteAsync,
+  runAuxiliaryCompletion,
+} from '../background/llm-helper.js'
+import {
+  EmbeddingService,
+  providerModelKey,
+  resolveEmbeddingApiKey,
+  type FetchLike,
+} from '../search/embedding.js'
 import {
   computeContentHash,
   containsSecretPattern,
@@ -34,6 +53,8 @@ import {
   type DreamTaskScheduleState,
   type ExtractRunResult,
   type MagicMemoryOverview,
+  type MagicMemorySettingsPatch,
+  type MagicMemorySettingsPayload,
   type MappingOrigin,
   type MemoryCategory,
   type MemoryMutationOp,
@@ -48,6 +69,10 @@ import {
   type ProjectRecord,
   type SessionEpisodeRecord,
   type SessionTelemetryState,
+  type SettingsGetResponse,
+  type SettingsReindexEmbeddingsResponse,
+  type SettingsTestEmbeddingResponse,
+  type SettingsTestLlmResponse,
   type UnifiedSearchRequest,
   type UnifiedSearchResponse,
   type UpdateMemoryInput,
@@ -71,6 +96,47 @@ export interface MagicMemoryServiceDeps {
   readonly fetchImpl?: FetchLike
 }
 
+interface StoredSettingsOverride {
+  enabled?: boolean
+  injectOnStart?: boolean
+  reanchorAfterCompaction?: boolean
+  includeSubagents?: 'search-only' | 'full' | 'off'
+  baselineBudgetTokens?: number
+  userProfileBudgetTokens?: number
+  deltaBudgetTokens?: number
+  maxMemoryChars?: number
+  autoSearch?: Partial<AutoSearchConfig>
+  embedding?: Partial<EmbeddingConfig>
+  extractor?: Partial<ExtractorConfig>
+  dreamer?: Partial<Omit<DreamerConfig, 'taskIntervalsMinutes'>> & {
+    taskIntervalsMinutes?: Partial<Record<DreamTaskName, number>>
+  }
+}
+
+const RUNTIME_SETTINGS_KEY = 'runtime_override'
+
+function clampInt(val: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(val)
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(min, Math.min(max, Math.round(n)))
+}
+
+function clampFloat(val: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(val)
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(min, Math.min(max, n))
+}
+
+function maskSecret(raw: string | undefined): { hasApiKey: boolean; apiKeyPreview: string } {
+  const trimmed = (raw ?? '').trim()
+  if (trimmed.length === 0) return { hasApiKey: false, apiKeyPreview: '' }
+  if (trimmed.length <= 8) return { hasApiKey: true, apiKeyPreview: '••••' }
+  return {
+    hasApiKey: true,
+    apiKeyPreview: `${trimmed.slice(0, 4)}••••${trimmed.slice(-4)}`,
+  }
+}
+
 export type ExtractCallback = (sessionId: string, signal?: AbortSignal) => Promise<ExtractRunResult>
 export type DreamCallback = (
   projectId: string,
@@ -88,6 +154,8 @@ export class MagicMemoryService extends Service {
   private readonly rawConfig: Partial<MagicMemoryConfig>
   private readonly lifecycleAbort = new AbortController()
   private readonly pendingEmbedTasks = new Set<Promise<void>>()
+  private readonly configListeners = new Set<() => void>()
+  private settingsOverride: StoredSettingsOverride = {}
   private extractHandler?: ExtractCallback
   private dreamHandler?: DreamCallback
 
@@ -104,6 +172,7 @@ export class MagicMemoryService extends Service {
     this.embeddings = new EmbeddingService(this.storage, deps.fetchImpl)
     this.searchEngine = new UnifiedSearchEngine(this.storage, this.embeddings)
     this.projectResolver = new ProjectIdentityResolver()
+    this.settingsOverride = this.loadSettingsOverride()
 
     ctx.effect(() => () => {
       this.lifecycleAbort.abort(new Error('dsh-magic-memory disposed'))
@@ -112,7 +181,39 @@ export class MagicMemoryService extends Service {
   }
 
   getConfig(): ResolvedConfig {
-    return readConfigSnapshot(this.rawConfig)
+    const base = readConfigSnapshot(this.rawConfig)
+    const ov = this.settingsOverride
+    return {
+      dbPath: base.dbPath,
+      enabled: ov.enabled ?? base.enabled,
+      injectOnStart: ov.injectOnStart ?? base.injectOnStart,
+      reanchorAfterCompaction: ov.reanchorAfterCompaction ?? base.reanchorAfterCompaction,
+      includeSubagents: ov.includeSubagents ?? base.includeSubagents,
+      baselineBudgetTokens: ov.baselineBudgetTokens ?? base.baselineBudgetTokens,
+      userProfileBudgetTokens: ov.userProfileBudgetTokens ?? base.userProfileBudgetTokens,
+      deltaBudgetTokens: ov.deltaBudgetTokens ?? base.deltaBudgetTokens,
+      maxMemoryChars: ov.maxMemoryChars ?? base.maxMemoryChars,
+      autoSearch: { ...DEFAULT_AUTO_SEARCH, ...base.autoSearch, ...(ov.autoSearch ?? {}) },
+      embedding: { ...DEFAULT_EMBEDDING, ...base.embedding, ...(ov.embedding ?? {}) },
+      extractor: { ...DEFAULT_EXTRACTOR, ...base.extractor, ...(ov.extractor ?? {}) },
+      dreamer: {
+        ...DEFAULT_DREAMER,
+        ...base.dreamer,
+        ...(ov.dreamer ?? {}),
+        taskIntervalsMinutes: {
+          ...DEFAULT_DREAMER_INTERVALS,
+          ...base.dreamer.taskIntervalsMinutes,
+          ...(ov.dreamer?.taskIntervalsMinutes ?? {}),
+        },
+      },
+    }
+  }
+
+  onConfigChange(listener: () => void): () => void {
+    this.configListeners.add(listener)
+    return () => {
+      this.configListeners.delete(listener)
+    }
   }
 
   getLifecycleSignal(): AbortSignal {
@@ -125,6 +226,371 @@ export class MagicMemoryService extends Service {
   }): void {
     if (handlers.extract) this.extractHandler = handlers.extract
     if (handlers.dream) this.dreamHandler = handlers.dream
+  }
+
+  // ── Runtime Settings & Diagnostics ──────────────────────────────────────────
+
+  getPublicSettings(): MagicMemorySettingsPayload {
+    const cfg = this.getConfig()
+    const masked = maskSecret(cfg.embedding.apiKey)
+    return {
+      enabled: cfg.enabled,
+      injectOnStart: cfg.injectOnStart,
+      reanchorAfterCompaction: cfg.reanchorAfterCompaction,
+      includeSubagents: cfg.includeSubagents,
+      baselineBudgetTokens: cfg.baselineBudgetTokens,
+      userProfileBudgetTokens: cfg.userProfileBudgetTokens,
+      deltaBudgetTokens: cfg.deltaBudgetTokens,
+      maxMemoryChars: cfg.maxMemoryChars,
+      autoSearch: { ...cfg.autoSearch },
+      extractor: { ...cfg.extractor },
+      dreamer: {
+        ...cfg.dreamer,
+        taskIntervalsMinutes: { ...cfg.dreamer.taskIntervalsMinutes },
+      },
+      embedding: {
+        provider: cfg.embedding.provider,
+        endpoint: cfg.embedding.endpoint,
+        model: cfg.embedding.model,
+        hasApiKey: masked.hasApiKey,
+        apiKeyPreview: masked.apiKeyPreview,
+        apiKeyEnv: cfg.embedding.apiKeyEnv,
+        timeoutMs: cfg.embedding.timeoutMs,
+      },
+    }
+  }
+
+  async getSettingsState(): Promise<SettingsGetResponse> {
+    const cfg = this.getConfig()
+    const [availableModels, resolvedExtractorRoute, resolvedDreamerRoute] = await Promise.all([
+      listAvailableLlmModels(this.ctx),
+      resolveAuxiliaryRouteAsync(this.ctx, {
+        provider: cfg.extractor.provider,
+        model: cfg.extractor.model,
+      }),
+      resolveAuxiliaryRouteAsync(this.ctx, {
+        provider: cfg.dreamer.provider,
+        model: cfg.dreamer.model,
+      }),
+    ])
+    const envVar = cfg.embedding.apiKeyEnv.trim()
+    const hasEnvEmbeddingKey = envVar.length > 0 && (process.env[envVar] ?? '').trim().length > 0
+    return {
+      settings: this.getPublicSettings(),
+      availableModels,
+      resolvedExtractorRoute,
+      resolvedDreamerRoute,
+      hasEnvEmbeddingKey,
+      dbPath: this.storage.path,
+    }
+  }
+
+  async updateSettings(patch: MagicMemorySettingsPatch): Promise<SettingsGetResponse> {
+    const current = this.getConfig()
+    const next: StoredSettingsOverride = {
+      ...this.settingsOverride,
+    }
+
+    if (typeof patch.enabled === 'boolean') next.enabled = patch.enabled
+    if (typeof patch.injectOnStart === 'boolean') next.injectOnStart = patch.injectOnStart
+    if (typeof patch.reanchorAfterCompaction === 'boolean') {
+      next.reanchorAfterCompaction = patch.reanchorAfterCompaction
+    }
+    if (patch.includeSubagents === 'search-only' || patch.includeSubagents === 'full' || patch.includeSubagents === 'off') {
+      next.includeSubagents = patch.includeSubagents
+    }
+    if (patch.baselineBudgetTokens !== undefined) {
+      next.baselineBudgetTokens = clampInt(patch.baselineBudgetTokens, 200, 32_000, current.baselineBudgetTokens)
+    }
+    if (patch.userProfileBudgetTokens !== undefined) {
+      next.userProfileBudgetTokens = clampInt(patch.userProfileBudgetTokens, 100, 8_000, current.userProfileBudgetTokens)
+    }
+    if (patch.deltaBudgetTokens !== undefined) {
+      next.deltaBudgetTokens = clampInt(patch.deltaBudgetTokens, 100, 8_000, current.deltaBudgetTokens)
+    }
+    if (patch.maxMemoryChars !== undefined) {
+      next.maxMemoryChars = clampInt(patch.maxMemoryChars, 200, 10_000, current.maxMemoryChars)
+    }
+
+    if (patch.autoSearch) {
+      next.autoSearch = {
+        ...current.autoSearch,
+        ...(typeof patch.autoSearch.enabled === 'boolean' ? { enabled: patch.autoSearch.enabled } : {}),
+        ...(patch.autoSearch.scoreThreshold !== undefined
+          ? { scoreThreshold: clampFloat(patch.autoSearch.scoreThreshold, 0.05, 1, current.autoSearch.scoreThreshold) }
+          : {}),
+        ...(patch.autoSearch.maxHints !== undefined
+          ? { maxHints: clampInt(patch.autoSearch.maxHints, 1, 10, current.autoSearch.maxHints) }
+          : {}),
+        ...(patch.autoSearch.minPromptChars !== undefined
+          ? { minPromptChars: clampInt(patch.autoSearch.minPromptChars, 4, 200, current.autoSearch.minPromptChars) }
+          : {}),
+      }
+    }
+
+    if (patch.extractor) {
+      next.extractor = {
+        ...current.extractor,
+        ...(typeof patch.extractor.enabled === 'boolean' ? { enabled: patch.extractor.enabled } : {}),
+        ...(typeof patch.extractor.onCompaction === 'boolean' ? { onCompaction: patch.extractor.onCompaction } : {}),
+        ...(typeof patch.extractor.autoPromote === 'boolean' ? { autoPromote: patch.extractor.autoPromote } : {}),
+        ...(typeof patch.extractor.provider === 'string' ? { provider: patch.extractor.provider.trim() } : {}),
+        ...(typeof patch.extractor.model === 'string' ? { model: patch.extractor.model.trim() } : {}),
+        ...(patch.extractor.triggerTokens !== undefined
+          ? { triggerTokens: clampInt(patch.extractor.triggerTokens, 1000, 200_000, current.extractor.triggerTokens) }
+          : {}),
+        ...(patch.extractor.cooldownSeconds !== undefined
+          ? { cooldownSeconds: clampInt(patch.extractor.cooldownSeconds, 0, 3600, current.extractor.cooldownSeconds) }
+          : {}),
+        ...(patch.extractor.maxOutputTokens !== undefined
+          ? { maxOutputTokens: clampInt(patch.extractor.maxOutputTokens, 256, 16_384, current.extractor.maxOutputTokens) }
+          : {}),
+      }
+    }
+
+    if (patch.dreamer) {
+      const mergedIntervals = { ...current.dreamer.taskIntervalsMinutes }
+      if (patch.dreamer.taskIntervalsMinutes) {
+        for (const taskName of DREAM_TASK_NAMES) {
+          const v = patch.dreamer.taskIntervalsMinutes[taskName]
+          if (v !== undefined) {
+            mergedIntervals[taskName] = clampInt(v, 0, 43_200, mergedIntervals[taskName])
+          }
+        }
+      }
+      next.dreamer = {
+        ...current.dreamer,
+        ...(typeof patch.dreamer.enabled === 'boolean' ? { enabled: patch.dreamer.enabled } : {}),
+        ...(typeof patch.dreamer.userMemoriesEnabled === 'boolean'
+          ? { userMemoriesEnabled: patch.dreamer.userMemoriesEnabled }
+          : {}),
+        ...(typeof patch.dreamer.provider === 'string' ? { provider: patch.dreamer.provider.trim() } : {}),
+        ...(typeof patch.dreamer.model === 'string' ? { model: patch.dreamer.model.trim() } : {}),
+        ...(patch.dreamer.tickIntervalMinutes !== undefined
+          ? { tickIntervalMinutes: clampInt(patch.dreamer.tickIntervalMinutes, 1, 1440, current.dreamer.tickIntervalMinutes) }
+          : {}),
+        ...(patch.dreamer.maxOutputTokens !== undefined
+          ? { maxOutputTokens: clampInt(patch.dreamer.maxOutputTokens, 512, 16_384, current.dreamer.maxOutputTokens) }
+          : {}),
+        ...(patch.dreamer.timeoutMs !== undefined
+          ? { timeoutMs: clampInt(patch.dreamer.timeoutMs, 5000, 300_000, current.dreamer.timeoutMs) }
+          : {}),
+        ...(patch.dreamer.recencyDays !== undefined
+          ? { recencyDays: clampInt(patch.dreamer.recencyDays, 1, 365, current.dreamer.recencyDays) }
+          : {}),
+        ...(patch.dreamer.userPromoteThreshold !== undefined
+          ? { userPromoteThreshold: clampInt(patch.dreamer.userPromoteThreshold, 2, 20, current.dreamer.userPromoteThreshold) }
+          : {}),
+        taskIntervalsMinutes: mergedIntervals,
+      }
+    }
+
+    if (patch.embedding) {
+      const nextEmb: EmbeddingConfig = {
+        ...current.embedding,
+        ...(patch.embedding.provider === 'off' || patch.embedding.provider === 'openai-compatible'
+          ? { provider: patch.embedding.provider }
+          : {}),
+        ...(typeof patch.embedding.endpoint === 'string' ? { endpoint: patch.embedding.endpoint.trim() } : {}),
+        ...(typeof patch.embedding.model === 'string' ? { model: patch.embedding.model.trim() } : {}),
+        ...(typeof patch.embedding.apiKeyEnv === 'string' ? { apiKeyEnv: patch.embedding.apiKeyEnv.trim() } : {}),
+        ...(patch.embedding.timeoutMs !== undefined
+          ? { timeoutMs: clampInt(patch.embedding.timeoutMs, 1000, 120_000, current.embedding.timeoutMs) }
+          : {}),
+      }
+      if (patch.embedding.clearApiKey === true) {
+        nextEmb.apiKey = ''
+      } else if (typeof patch.embedding.apiKey === 'string' && patch.embedding.apiKey.trim().length > 0) {
+        nextEmb.apiKey = patch.embedding.apiKey.trim()
+      }
+      next.embedding = nextEmb
+    }
+
+    this.settingsOverride = next
+    this.saveSettingsOverride(next)
+    for (const listener of this.configListeners) {
+      try {
+        listener()
+      } catch {
+        // Ignore individual listener errors
+      }
+    }
+    return this.getSettingsState()
+  }
+
+  async testLlmRoute(
+    override: { provider?: string; model?: string },
+    signal?: AbortSignal,
+  ): Promise<SettingsTestLlmResponse> {
+    const startedAt = Date.now()
+    const route = await resolveAuxiliaryRouteAsync(this.ctx, override)
+    if (!route) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        route: null,
+        message: 'No active LLM provider/model found in DSH. Configure a provider or select a model explicitly.',
+      }
+    }
+    const outcome = await runAuxiliaryCompletion(this.ctx, {
+      route,
+      systemPrompt: 'You are a connectivity test endpoint. Reply with exactly: OK',
+      userPrompt: 'Ping',
+      maxTokens: 16,
+      timeoutMs: 25_000,
+      purpose: 'magic-memory-settings-test',
+      signal,
+    })
+    const latencyMs = Date.now() - startedAt
+    if (outcome.ok) {
+      return {
+        ok: true,
+        latencyMs,
+        route: outcome.route,
+        message: `Connected to ${outcome.route.provider}/${outcome.route.model} (${latencyMs}ms)`,
+      }
+    }
+    return {
+      ok: false,
+      latencyMs,
+      route: outcome.route,
+      message: outcome.message,
+    }
+  }
+
+  async testEmbeddingSettings(
+    draft: Partial<EmbeddingConfig> & { clearApiKey?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<SettingsTestEmbeddingResponse> {
+    const current = this.getConfig().embedding
+    const effective: EmbeddingConfig = {
+      ...current,
+      ...(draft.provider === 'off' || draft.provider === 'openai-compatible' ? { provider: draft.provider } : {}),
+      ...(typeof draft.endpoint === 'string' ? { endpoint: draft.endpoint.trim() } : {}),
+      ...(typeof draft.model === 'string' ? { model: draft.model.trim() } : {}),
+      ...(typeof draft.apiKeyEnv === 'string' ? { apiKeyEnv: draft.apiKeyEnv.trim() } : {}),
+      ...(draft.timeoutMs !== undefined ? { timeoutMs: clampInt(draft.timeoutMs, 1000, 120_000, current.timeoutMs) } : {}),
+    }
+    if (draft.clearApiKey === true) {
+      effective.apiKey = ''
+    } else if (typeof draft.apiKey === 'string' && draft.apiKey.trim().length > 0) {
+      effective.apiKey = draft.apiKey.trim()
+    }
+    // Check env availability hint if no key at all
+    const res = await this.embeddings.testConnectivity(effective, signal)
+    const hasKey = resolveEmbeddingApiKey(effective).length > 0
+    if (!res.ok && !hasKey && res.message.includes('401')) {
+      return {
+        ...res,
+        message: `${res.message} (no API key configured and env ${effective.apiKeyEnv || 'unset'} is empty)`,
+      }
+    }
+    return res
+  }
+
+  async reindexProjectEmbeddings(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<SettingsReindexEmbeddingsResponse> {
+    const cfg = this.getConfig().embedding
+    if (!this.embeddings.isConfigured(cfg)) {
+      return {
+        total: 0,
+        embedded: 0,
+        skipped: 0,
+        failed: 0,
+        message: 'Embedding provider is disabled or missing endpoint/model.',
+      }
+    }
+
+    const modelKey = providerModelKey(cfg)
+    const rows = this.storage.db
+      .prepare(
+        `SELECT m.id, m.content, m.content_hash, e.provider_model AS emb_model, e.content_hash AS emb_hash
+         FROM memories m
+         LEFT JOIN memory_embeddings e
+           ON e.target_kind = 'memory' AND e.target_id = m.id
+         WHERE m.status = 'active'
+           AND (m.project_id = ? OR m.scope = 'global')
+         ORDER BY m.id ASC`,
+      )
+      .all(projectId) as {
+      id: number
+      content: string
+      content_hash: string
+      emb_model: string | null
+      emb_hash: string | null
+    }[]
+
+    const stale = rows.filter(r => r.emb_model !== modelKey || r.emb_hash !== r.content_hash)
+    const skipped = rows.length - stale.length
+    let embedded = 0
+    let failed = 0
+
+    const BATCH_SIZE = 16
+    for (let i = 0; i < stale.length; i += BATCH_SIZE) {
+      if (signal?.aborted || this.lifecycleAbort.signal.aborted) break
+      const batch = stale.slice(i, i + BATCH_SIZE)
+      const vectors = await this.embeddings.embedTexts(
+        batch.map(b => b.content),
+        cfg,
+        signal,
+      )
+      if (!vectors || vectors.length !== batch.length) {
+        failed += batch.length
+        continue
+      }
+      for (let j = 0; j < batch.length; j++) {
+        const item = batch[j]!
+        const vec = vectors[j]!
+        if (this.embeddings.saveEmbeddingIfHashMatches('memory', item.id, item.content_hash, cfg, vec)) {
+          embedded++
+        }
+      }
+    }
+
+    return {
+      total: rows.length,
+      embedded,
+      skipped,
+      failed,
+      message:
+        failed > 0
+          ? `Indexed ${embedded}/${rows.length} (${skipped} up-to-date, ${failed} failed)`
+          : `Indexed ${embedded} new embeddings (${skipped} already up-to-date, total ${rows.length})`,
+    }
+  }
+
+  private loadSettingsOverride(): StoredSettingsOverride {
+    try {
+      const row = this.storage.db
+        .prepare('SELECT value_json FROM plugin_settings WHERE key = ?')
+        .get(RUNTIME_SETTINGS_KEY) as { value_json?: string } | undefined
+      if (!row?.value_json) return {}
+      const parsed = JSON.parse(row.value_json) as unknown
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as StoredSettingsOverride
+      }
+    } catch {
+      // Ignore malformed settings row
+    }
+    return {}
+  }
+
+  private saveSettingsOverride(override: StoredSettingsOverride): void {
+    const now = Date.now()
+    const payload = JSON.stringify(override)
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare(
+          `INSERT INTO plugin_settings (key, value_json, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET
+             value_json = excluded.value_json,
+             updated_at = excluded.updated_at`,
+        )
+        .run(RUNTIME_SETTINGS_KEY, payload, now)
+    })
   }
 
   // ── Project & Workspace Operations ──────────────────────────────────────────

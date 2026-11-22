@@ -6,9 +6,12 @@ import { ensureMagicMemoryStyles } from '../styles.js'
 import { DreamerTab } from './DreamerTab.js'
 import { EpisodesNotesTab } from './EpisodesNotesTab.js'
 import { MemoriesTab } from './MemoriesTab.js'
+import { SelectMenu } from './SelectMenu.js'
+import { SettingsTab } from './SettingsTab.js'
 import { TelemetryTab } from './TelemetryTab.js'
+import { FolderMiniIcon, RefreshIcon, SettingsIcon } from './ui-helpers.js'
 
-export type PanelTabKey = 'memories' | 'episodes' | 'dreamer' | 'telemetry'
+export type PanelTabKey = 'memories' | 'episodes' | 'dreamer' | 'telemetry' | 'settings'
 
 export interface MemoryPanelProps {
   api: MagicMemoryApi
@@ -111,25 +114,31 @@ export function MemoryPanel({
   const panel = (
     <div className="dmm-root" data-testid="magic-memory-panel" data-variant={variant}>
       <header className="dmm-header">
-        <div className="dmm-title-group">
-          <MagicMemoryIcon size={16} />
-          <span className="dmm-title">{t('tab.title')}</span>
+        <div className="dmm-title-block">
+          <div className="dmm-title-group">
+            <span className="dmm-title-icon">
+              <MagicMemoryIcon size={variant === 'page' ? 17 : 15} />
+            </span>
+            <span className="dmm-title">{t('tab.title')}</span>
+          </div>
+          {variant === 'page' && <p className="dmm-subtitle">{t('header.subtitle')}</p>}
         </div>
 
         <div className="dmm-header-controls">
           {projects.length > 0 && (
-            <select
-              aria-label={t('header.project')}
-              className="dmm-select dmm-select-compact"
+            <SelectMenu
+              ariaLabel={t('header.project')}
               value={activeProjectId}
-              onChange={e => setSelectedProjectId(e.target.value)}
-            >
-              {projects.map(p => (
-                <option key={p.projectId} value={p.projectId}>
-                  {p.displayName}
-                </option>
-              ))}
-            </select>
+              compact
+              align="right"
+              leadingIcon={<FolderMiniIcon size={13} />}
+              options={projects.map(p => ({
+                value: p.projectId,
+                label: p.displayName,
+                sublabel: p.canonicalRoot || undefined,
+              }))}
+              onChange={val => setSelectedProjectId(val)}
+            />
           )}
           <button
             type="button"
@@ -137,7 +146,8 @@ export function MemoryPanel({
             disabled={loading}
             onClick={triggerRefresh}
           >
-            {loading ? t('header.loading') : t('header.refresh')}
+            <RefreshIcon size={13} spinning={loading} />
+            <span>{loading ? t('header.loading') : t('header.refresh')}</span>
           </button>
         </div>
       </header>
@@ -189,12 +199,23 @@ export function MemoryPanel({
         >
           <span>{t('nav.telemetry')}</span>
         </button>
+
+        <button
+          type="button"
+          role="tab"
+          className="dmm-tab"
+          aria-selected={activeTab === 'settings'}
+          onClick={() => setActiveTab('settings')}
+        >
+          <SettingsIcon size={13} />
+          <span>{t('nav.settings')}</span>
+        </button>
       </nav>
 
       {error && (
         <div className="dmm-banner dmm-banner-error" role="alert">
           <span>{error}</span>
-          <button type="button" className="dmm-btn dmm-btn-ghost" onClick={() => setError(null)}>
+          <button type="button" className="dmm-btn dmm-btn-ghost" onClick={() => setError(null)} aria-label="Dismiss error">
             ✕
           </button>
         </div>
@@ -203,7 +224,7 @@ export function MemoryPanel({
       {notice && !error && (
         <div className="dmm-banner dmm-banner-info" role="status">
           <span>{notice}</span>
-          <button type="button" className="dmm-btn dmm-btn-ghost" onClick={() => setNotice(null)}>
+          <button type="button" className="dmm-btn dmm-btn-ghost" onClick={() => setNotice(null)} aria-label="Dismiss notice">
             ✕
           </button>
         </div>
@@ -211,7 +232,9 @@ export function MemoryPanel({
 
       <main className="dmm-body">
         {!overview && loading ? (
-          <div className="dmm-empty">{t('header.loading')}</div>
+          <div className="dmm-empty">
+            <p className="dmm-empty-desc">{t('header.loading')}</p>
+          </div>
         ) : activeTab === 'memories' ? (
           <MemoriesTab
             api={api}
@@ -246,6 +269,16 @@ export function MemoryPanel({
             onError={handleError}
             onNotice={handleNotice}
           />
+        ) : activeTab === 'settings' ? (
+          <SettingsTab
+            api={api}
+            projectId={activeProjectId}
+            t={t}
+            refreshToken={refreshToken}
+            onMutated={triggerRefresh}
+            onError={handleError}
+            onNotice={handleNotice}
+          />
         ) : overview ? (
           <TelemetryTab
             api={api}
@@ -257,7 +290,9 @@ export function MemoryPanel({
             onNotice={handleNotice}
           />
         ) : (
-          <div className="dmm-empty">{t('header.loading')}</div>
+          <div className="dmm-empty">
+            <p className="dmm-empty-desc">{t('header.loading')}</p>
+          </div>
         )}
       </main>
     </div>

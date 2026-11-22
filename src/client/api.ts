@@ -14,6 +14,7 @@ import type {
   DreamTaskScheduleState,
   ExtractRunResult,
   MagicMemoryOverview,
+  MagicMemorySettingsPatch,
   MemoryCategory,
   MemoryRecord,
   MemoryScope,
@@ -22,6 +23,10 @@ import type {
   ProjectRecord,
   SearchSource,
   SessionEpisodeRecord,
+  SettingsGetResponse,
+  SettingsReindexEmbeddingsResponse,
+  SettingsTestEmbeddingResponse,
+  SettingsTestLlmResponse,
   UnifiedSearchResponse,
   WriteMemoryResult,
 } from '../shared/types.js'
@@ -220,5 +225,36 @@ export class MagicMemoryApi {
     content: string
   }> {
     return this.invoke('export', params, signal)
+  }
+
+  getSettings(signal?: AbortSignal): Promise<SettingsGetResponse> {
+    return this.invoke('settings.get', {}, signal)
+  }
+
+  updateSettings(patch: MagicMemorySettingsPatch, signal?: AbortSignal): Promise<SettingsGetResponse> {
+    return this.invoke('settings.update', { patch }, signal)
+  }
+
+  testLlm(params: { provider?: string; model?: string }, signal?: AbortSignal): Promise<SettingsTestLlmResponse> {
+    return this.invoke('settings.testLlm', params, signal)
+  }
+
+  testEmbedding(
+    params: {
+      provider?: 'off' | 'openai-compatible'
+      endpoint?: string
+      model?: string
+      apiKey?: string
+      clearApiKey?: boolean
+      apiKeyEnv?: string
+      timeoutMs?: number
+    },
+    signal?: AbortSignal,
+  ): Promise<SettingsTestEmbeddingResponse> {
+    return this.invoke('settings.testEmbedding', { embedding: params }, signal)
+  }
+
+  reindexEmbeddings(params: { projectId?: string }, signal?: AbortSignal): Promise<SettingsReindexEmbeddingsResponse> {
+    return this.invoke('settings.reindexEmbeddings', params, signal)
   }
 }
