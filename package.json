@@ -4,7 +4,7 @@
   "description": "Magic-context inspired closed-loop cross-session memory plugin for DeepSeek Harness (DSH): zero-native SQLite FTS5 + CJK hybrid search, optional remote embeddings, cache-stable baseline & post-compaction re-anchor injection, background fact extractor, Dreamer self-maintenance, and native Web/Desktop UI with built-in model & embedding settings.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Nexusyyan/dsh-magic-memory.git"
+    "url": "git+https://github.com/Nexusyyan/dsh-magic-memory.git"
   },
   "homepage": "https://github.com/Nexusyyan/dsh-magic-memory#readme",
   "bugs": {
@@ -22,6 +22,10 @@
     "dreamer"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

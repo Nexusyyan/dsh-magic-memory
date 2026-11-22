@@ -37,29 +37,27 @@ A closed-loop cross-session memory plugin for **DeepSeek Harness (DSH)** inspire
 
 ## Installation in DSH
 
-Pre-built `dist/` artifacts are included in every release tag, so installing directly from GitHub works out-of-the-box on **macOS, Windows, and Linux** with zero build step.
+### Option 1: Install from npm (Recommended — enables automatic update notifications in DSH)
 
-### Option 1: Install directly from GitHub (Recommended for macOS & Windows)
+In DSH Desktop / Web **Plugins → Install Plugin**, enter:
 
-Add to your DSH profile `package.json` (or via DSH Plugins Manager):
-
-```json
-{
-  "dependencies": {
-    "dsh-magic-memory": "github:Nexusyyan/dsh-magic-memory#v0.1.1"
-  }
-}
+```text
+dsh-magic-memory
 ```
 
-Or via CLI:
+Or via CLI / profile `package.json`:
+
+```bash
+dsh plugin add dsh-magic-memory
+```
+
+### Option 2: Install directly from GitHub
 
 ```bash
 dsh plugin add github:Nexusyyan/dsh-magic-memory#v0.1.1
 ```
 
-> Use `github:Nexusyyan/dsh-magic-memory` (without `#v0.1.1`) to track `main`.
-
-### Option 2: Install from a local checkout (Development)
+### Option 3: Install from a local checkout (Development)
 
 ```bash
 git clone https://github.com/Nexusyyan/dsh-magic-memory.git
@@ -71,7 +69,7 @@ pnpm run build
 dsh plugin add /path/to/dsh-magic-memory
 ```
 
-### Option 3: Custom Cordis / SDK host
+### Option 4: Custom Cordis / SDK host
 
 ```ts
 import * as magicMemory from 'dsh-magic-memory'
