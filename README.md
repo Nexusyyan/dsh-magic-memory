@@ -46,7 +46,7 @@ Add to your DSH profile `package.json` (or via DSH Plugins Manager):
 ```json
 {
   "dependencies": {
-    "dsh-magic-memory": "github:Nexusyyan/dsh-magic-memory#v0.1.0"
+    "dsh-magic-memory": "github:Nexusyyan/dsh-magic-memory#v0.1.1"
   }
 }
 ```
@@ -54,10 +54,10 @@ Add to your DSH profile `package.json` (or via DSH Plugins Manager):
 Or via CLI:
 
 ```bash
-dsh plugin add github:Nexusyyan/dsh-magic-memory#v0.1.0
+dsh plugin add github:Nexusyyan/dsh-magic-memory#v0.1.1
 ```
 
-> Use `github:Nexusyyan/dsh-magic-memory` (without `#v0.1.0`) to track `main`.
+> Use `github:Nexusyyan/dsh-magic-memory` (without `#v0.1.1`) to track `main`.
 
 ### Option 2: Install from a local checkout (Development)
 

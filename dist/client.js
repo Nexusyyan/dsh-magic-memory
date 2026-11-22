@@ -1,4 +1,4 @@
-/* dsh-magic-memory@0.1.0 — DSH browser client bundle */
+/* dsh-magic-memory@0.1.1 — DSH browser client bundle */
 window.__ModuleLoader__.load({
   id: "dsh-magic-memory",
   factory: function(require) {
